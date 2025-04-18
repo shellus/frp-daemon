@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -59,8 +58,6 @@ func LoadInstancesFile(path string) (*InstancesFile, error) {
 		return nil, err
 	}
 
-	log.Printf("正在加载配置文件: %s", absPath)
-
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, err
@@ -71,6 +68,5 @@ func LoadInstancesFile(path string) (*InstancesFile, error) {
 		return nil, err
 	}
 
-	log.Printf("解析后的配置: %+v", config)
 	return &config, nil
 }

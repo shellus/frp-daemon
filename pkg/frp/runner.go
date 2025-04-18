@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/shellus/frp-daemon/pkg/types"
 )
@@ -151,23 +152,27 @@ func (r *Runner) StopInstance(name string) error {
 
 	// 停止进程
 	if instance.cmd != nil && instance.cmd.Process != nil {
-		// 检查进程是否还在运行
-		if err := instance.cmd.Process.Signal(syscall.Signal(0)); err == nil {
-			// 进程还在运行，尝试终止它
-			if err := instance.cmd.Process.Kill(); err != nil {
-				log.Printf("警告: 终止进程失败: %v", err)
+		// 首先尝试发送SIGTERM信号，让进程优雅退出
+		if err := instance.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			// 如果进程已经退出，忽略错误
+			if err.Error() != "os: process already finished" {
+				log.Printf("警告: 发送SIGTERM信号失败: %v", err)
 			}
-			// 等待进程退出
-			instance.cmd.Wait()
-		} else {
-			log.Printf("进程已经退出")
+		}
+
+		// 等待进程退出，带超时
+		time.Sleep(time.Second)               // 等待1秒
+		if instance.cmd.ProcessState == nil { // 检查进程是否已退出
+			log.Printf("警告: 进程 %d 未在1秒内退出，将在30秒后强制终止", instance.cmd.Process.Pid)
+			time.Sleep(30 * time.Second)          // 等待30秒
+			if instance.cmd.ProcessState == nil { // 再次检查进程是否已退出
+				log.Printf("错误: 进程 %d 未在30秒内退出，发送SIGKILL信号强制终止", instance.cmd.Process.Pid)
+				if err := instance.cmd.Process.Kill(); err != nil {
+					log.Printf("警告: 发送SIGKILL信号失败: %v", err)
+				}
+			}
 		}
 	}
-
-	// 删除实例
-	r.mu.Lock()
-	delete(r.instances, name)
-	r.mu.Unlock()
 
 	return nil
 }
@@ -194,6 +199,7 @@ func (r *Runner) monitorInstance(name string) {
 		return
 	}
 
+	// 等待进程退出
 	err := instance.cmd.Wait()
 
 	r.mu.Lock()
@@ -211,6 +217,8 @@ func (r *Runner) monitorInstance(name string) {
 		} else {
 			instance.status.ExitStatus = 0
 		}
+		// 删除实例
+		delete(r.instances, name)
 	}
 }
 
