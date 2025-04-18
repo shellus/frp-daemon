@@ -137,13 +137,22 @@ func (r *Runner) appendLog(instance *Instance, line string) {
 	}
 }
 
+// ExistsInstance 检查实例是否存在
+func (r *Runner) ExistsInstance(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, exists := r.instances[name]
+	return exists
+}
+
 // StopInstance 停止FRP实例
 func (r *Runner) StopInstance(name string) error {
 	r.mu.Lock()
 	instance, exists := r.instances[name]
 	if !exists {
 		r.mu.Unlock()
-		return fmt.Errorf("实例 %s 不存在", name)
+		// 实例不存在，视为成功
+		return nil
 	}
 
 	// 标记实例为已停止

@@ -7,12 +7,14 @@ import (
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
+type MessageHandler func(jsonMessage []byte)
+
 type MQTT struct {
-	config *types.MQTTClientOpts
+	config types.MQTTClientOpts
 	client pahomqtt.Client
 }
 
-func NewMQTT(config *types.MQTTClientOpts) *MQTT {
+func NewMQTT(config types.MQTTClientOpts) *MQTT {
 	return &MQTT{config: config}
 }
 
@@ -51,8 +53,10 @@ func (m *MQTT) Publish(topic string, payload []byte, qos byte, retain bool) erro
 	return nil
 }
 
-func (m *MQTT) Subscribe(topic string, qos byte, callback pahomqtt.MessageHandler) error {
-	token := m.client.Subscribe(topic, qos, callback)
+func (m *MQTT) Subscribe(topic string, qos byte, callback MessageHandler) error {
+	token := m.client.Subscribe(topic, qos, func(client pahomqtt.Client, msg pahomqtt.Message) {
+		callback(msg.Payload())
+	})
 	if token.Wait() && token.Error() != nil {
 		return token.Error()
 	}

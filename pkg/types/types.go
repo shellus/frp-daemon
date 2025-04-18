@@ -49,6 +49,13 @@ type InstanceConfigLocal struct {
 	ConfigPath string `yaml:"configPath"` // FRP配置文件
 }
 
+// InstanceConfigRemote FRP实例配置-远程
+type InstanceConfigRemote struct {
+	Name          string `yaml:"name"`          // 实例名称
+	Version       string `yaml:"version"`       // FRP版本
+	ConfigContent string `yaml:"config_content"` // FRP配置文件内容
+}
+
 // Status 客户端状态
 type Status struct {
 	ID        string           `json:"id"`        // 客户端ID

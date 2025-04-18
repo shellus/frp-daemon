@@ -63,3 +63,17 @@ func LoadInstancesFile(path string) (*InstancesFile, error) {
 
 	return &config, nil
 }
+
+// WriteInstancesFile 写入instances.yaml配置
+func WriteInstancesFile(path string, config *InstancesFile) error {
+	if path == "" {
+		return errors.New("path is empty")
+	}
+
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
+}

@@ -7,6 +7,7 @@
 - [✓] 优雅关闭
 - [✓] client连接MQTT等待配置下发
 - [✓] controller命令：new
+- [✓] client handler: update
 - [ ] controller命令：delete
 - [ ] controller命令：update
 - [ ] controller命令：status
