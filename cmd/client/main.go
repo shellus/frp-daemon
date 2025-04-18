@@ -2,7 +2,9 @@ package main
 
 import (
 	"log"
-	"time"
+	"os"
+	"os/signal"
+	"syscall"
 
 	config "github.com/shellus/frp-daemon/pkg/client"
 	"github.com/shellus/frp-daemon/pkg/frp"
@@ -45,13 +47,23 @@ func main() {
 		if err := runner.StartInstance(instance.Name, instance.Version, frpPath, instance.ConfigPath); err != nil {
 			log.Printf("启动实例 %s 失败: %v", instance.Name, err)
 		}
-		log.Printf("启动实例 %s 成功", instance.Name)
+		log.Printf("启动实例 %s 成功，进程ID: %d", instance.Name, runner.GetInstancePid(instance.Name))
 	}
 
 	log.Println("FRP守护进程启动...")
 
-	// TODO runner应该Ctrl+c优雅退出，关闭runner所有子进程
-	for {
-		time.Sleep(10 * time.Second)
+	// 设置信号处理
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// 等待信号
+	<-sigChan
+	log.Println("收到关闭信号，开始优雅关闭...")
+
+	// 优雅关闭所有实例
+	if err := runner.Close(); err != nil {
+		log.Printf("关闭FRP实例时发生错误: %v", err)
 	}
+
+	log.Println("FRP守护进程已关闭")
 }

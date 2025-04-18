@@ -5,5 +5,6 @@
 - [✓] 下载指定版本frp二进制
 - [✓] 运行多个frp实例
 - [ ] 优雅关闭
-- [ ] client连接MQTT
-- [ ] 完成controller程序
+- [ ] client连接MQTT等待配置下发
+- [ ] 完成controller程序命令处理
+- [ ] 实现MQTT保留消息，允许客户端不在线也可以下发配置

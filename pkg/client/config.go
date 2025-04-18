@@ -2,7 +2,9 @@ package config
 
 import (
 	"errors"
+	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/shellus/frp-daemon/pkg/types"
 	"gopkg.in/yaml.v3"
@@ -10,20 +12,20 @@ import (
 
 // ClientConfig client.yaml配置
 type ClientConfig struct {
-	Client types.ClientAuth `json:"client"` // 客户端认证信息
-	Mqtt   types.MQTTConfig `json:"mqtt"`   // MQTT配置
+	Client types.ClientAuth `yaml:"client"` // 客户端认证信息
+	Mqtt   types.MQTTConfig `yaml:"mqtt"`   // MQTT配置
 }
 
 // InstanceConfig FRP实例配置
 type InstanceConfig struct {
-	Name    string `json:"name"`    // 实例名称
-	Version string `json:"version"` // FRP版本
-	ConfigPath  string `json:"configPath"`  // FRP配置文件
+	Name       string `yaml:"name"`       // 实例名称
+	Version    string `yaml:"version"`    // FRP版本
+	ConfigPath string `yaml:"configPath"` // FRP配置文件
 }
 
 // InstancesFile instances.yaml配置
 type InstancesFile struct {
-	Instances []InstanceConfig `json:"instances"` // FRP实例配置
+	Instances []InstanceConfig `yaml:"instances"` // FRP实例配置
 }
 
 // LoadClientConfig 加载守护进程配置
@@ -51,7 +53,15 @@ func LoadInstancesFile(path string) (*InstancesFile, error) {
 		return nil, errors.New("path is empty")
 	}
 
-	data, err := os.ReadFile(path)
+	// 获取instances.yaml的绝对路径
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("正在加载配置文件: %s", absPath)
+
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, err
 	}
@@ -61,5 +71,6 @@ func LoadInstancesFile(path string) (*InstancesFile, error) {
 		return nil, err
 	}
 
+	log.Printf("解析后的配置: %+v", config)
 	return &config, nil
 }

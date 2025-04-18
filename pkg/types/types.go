@@ -14,7 +14,6 @@ type ClientAuth struct {
 	Password string `json:"password"` // 认证密码
 }
 
-
 // Status 客户端状态
 type Status struct {
 	ID        string           `json:"id"`        // 客户端ID
@@ -24,7 +23,8 @@ type Status struct {
 
 // InstanceStatus FRP实例状态
 type InstanceStatus struct {
-	Running bool   `json:"running"` // 是否运行中
-	LastLog string `json:"last_log"` // 最后100行日志
-	ExitStatus int `json:"exit_status"` // 退出状态
+	Running    bool     `json:"running"`     // 是否运行中
+	LastLog    []string `json:"last_log"`    // 最后100行日志
+	ExitStatus int      `json:"exit_status"` // 退出状态
+	Pid        int      `json:"pid"`         // 进程ID
 }
