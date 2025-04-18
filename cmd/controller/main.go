@@ -28,7 +28,7 @@ func main() {
 
 	// 创建new子命令
 	newCmd := flag.NewFlagSet("new", flag.ExitOnError)
-	clientId := newCmd.String("id", "", "客户端ID")
+	clientName := newCmd.String("name", "", "客户端名称")
 
 	// 解析主命令参数
 	flag.Parse()
@@ -48,8 +48,8 @@ func main() {
 		}
 
 		// 检查必需参数
-		if *clientId == "" {
-			log.Fatal("请使用 -id 参数指定客户端ID")
+		if *clientName == "" {
+			log.Fatal("请使用 -name 参数指定客户端名称")
 		}
 
 		// 创建EMQX API客户端
@@ -57,7 +57,8 @@ func main() {
 
 		// 创建新客户端
 		auth := &types.ClientAuth{
-			ID:       *clientId,
+			Name:     *clientName,
+			ClientId: types.GenerateRandomString(16),
 			Password: types.GenerateRandomString(32),
 		}
 
@@ -75,7 +76,13 @@ func main() {
 			log.Fatalf("转换客户端配置到YAML失败: %v", err)
 		}
 
-		log.Printf("生成客户端成功\n# 请将以下内容保存到client.yaml文件中\n%s", string(yamlStr))
+		log.Printf("生成客户端成功\n# 请将以下内容保存到client.yaml文件中，作为被控端的配置，本配置中的mqtt部分只会出现一次\n%s", string(yamlStr))
+
+		cfg.Clients = append(cfg.Clients, *auth)
+		if err := controller.WriteControllerConfig(cfg, configPath); err != nil {
+			log.Fatalf("写入控制器配置失败: %v", err)
+		}
+		log.Printf("被控端配置写入成功")
 
 	default:
 		log.Fatalf("未知命令: %s", os.Args[1])

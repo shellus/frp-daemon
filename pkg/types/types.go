@@ -27,8 +27,9 @@ type MQTTClientOpts struct {
 
 // ClientConfig 客户端配置，这是本程序的客户端配置，不是MQTT的客户端配置
 type ClientAuth struct {
-	ID       string `yaml:"id"`       // 客户端ID
-	Password string `yaml:"password"` // 客户端密码
+	Name     string `yaml:"name"`      // 客户端名称，无实际用途
+	ClientId string `yaml:"client_id"` // 客户端ID
+	Password string `yaml:"password"`  // 客户端密码
 }
 
 // generateRandomString 生成指定长度的随机字符串
