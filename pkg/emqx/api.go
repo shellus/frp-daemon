@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/shellus/frp-daemon/pkg/types"
@@ -27,8 +26,8 @@ func NewAPI(config *types.EMQXAPIConfig) *API {
 func (a *API) CreateUser(auth *types.ClientAuth) (*types.MQTTClientOpts, error) {
 	url := fmt.Sprintf("%s/api/v5/authentication/%s/users", a.config.ApiEndpoint, "password_based:built_in_database")
 
-	mqttClientId := types.GenerateRandomString(16)
-	mqttPassword := types.GenerateRandomString(32)
+	mqttClientId := auth.ClientId
+	mqttPassword := auth.Password
 	// 准备请求体
 	body := map[string]interface{}{
 		"user_id":      mqttClientId,
@@ -66,13 +65,11 @@ func (a *API) CreateUser(auth *types.ClientAuth) (*types.MQTTClientOpts, error) 
 	}
 	err = json.Unmarshal(bodyBytes, &respJson)
 	if err != nil {
-		log.Printf("解析响应失败：curl=%s, body=%s，resp=%+v", url, string(jsonBody), respJson)
 		return nil, fmt.Errorf("解析响应失败: %v", err)
 	}
 
 	// 检查响应状态
 	if resp.StatusCode != http.StatusCreated {
-		log.Printf("创建用户失败：curl=%s, body=%s，resp=%+v", url, string(jsonBody), respJson)
 		return nil, fmt.Errorf("创建用户失败：状态码: %d", resp.StatusCode)
 	}
 
@@ -87,4 +84,29 @@ func (a *API) CreateUser(auth *types.ClientAuth) (*types.MQTTClientOpts, error) 
 		Retain:       types.Retain,
 		CleanSession: types.CleanSession,
 	}, nil
+}
+
+// DeleteUser 删除MQTT用户
+func (a *API) DeleteUser(auth *types.ClientAuth) error {
+	url := fmt.Sprintf("%s/api/v5/authentication/%s/users/%s", a.config.ApiEndpoint, "password_based:built_in_database", auth.ClientId)
+
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.SetBasicAuth(a.config.ApiAppKey, a.config.ApiSecretKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("删除用户失败：状态码: %d", resp.StatusCode)
+	}
+
+	return nil
 }

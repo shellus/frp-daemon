@@ -30,6 +30,10 @@ func main() {
 	newCmd := flag.NewFlagSet("new", flag.ExitOnError)
 	clientName := newCmd.String("name", "", "客户端名称")
 
+	// 创建delete子命令
+	deleteCmd := flag.NewFlagSet("delete", flag.ExitOnError)
+	deleteClientName := deleteCmd.String("name", "", "要删除的客户端名称")
+
 	// 解析主命令参数
 	flag.Parse()
 
@@ -83,7 +87,50 @@ func main() {
 			log.Fatalf("写入控制器配置失败: %v", err)
 		}
 		log.Printf("被控端配置写入成功")
+	case "delete":
+		// 解析delete子命令参数
+		if err := deleteCmd.Parse(os.Args[2:]); err != nil {
+			log.Fatalf("解析参数失败: %v", err)
+		}
 
+		// 检查必需参数
+		if *deleteClientName == "" {
+			log.Fatal("请使用 -name 参数指定要删除的客户端名称")
+		}
+
+		// 查找要删除的客户端
+		var clientIndex = -1
+		var clientToDelete *types.ClientAuth
+		for i, client := range cfg.Clients {
+			if client.Name == *deleteClientName {
+				clientIndex = i
+				clientToDelete = &client
+				break
+			}
+		}
+
+		if clientIndex == -1 {
+			log.Fatalf("未找到名为 %s 的客户端", *deleteClientName)
+		}
+
+		// 创建EMQX API客户端
+		api := emqx.NewAPI(cfg.EMQXAPI)
+
+		// 删除MQTT用户
+		if err := api.DeleteUser(clientToDelete); err != nil {
+			log.Printf("删除MQTT用户失败: %v", err)
+			return
+		}
+
+		// 从配置中删除客户端
+		cfg.Clients = append(cfg.Clients[:clientIndex], cfg.Clients[clientIndex+1:]...)
+
+		// 保存更新后的配置
+		if err := controller.WriteControllerConfig(cfg, configPath); err != nil {
+			log.Fatalf("写入控制器配置失败: %v", err)
+		}
+
+		log.Printf("成功删除客户端: %s", *deleteClientName)
 	default:
 		log.Fatalf("未知命令: %s", os.Args[1])
 	}
