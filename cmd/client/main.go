@@ -17,10 +17,14 @@ var binDir = "./bin"
 
 func main() {
 	// 加载配置并上线MQTT
-	// cfg, err := config.LoadClientConfig(configPath)
-	// if err != nil {
-	// 	log.Fatalf("加载客户端配置失败: %v", err)
-	// }
+	cfg, err := config.LoadClientConfig(configPath)
+	if err != nil {
+		log.Fatalf("加载客户端配置失败: %v", err)
+	}
+	client, err := config.NewClient(cfg.Client, cfg.Mqtt)
+	if err != nil {
+		log.Fatalf("创建客户端失败: %v", err)
+	}
 
 	// 加载实例配置
 	instances, err := config.LoadInstancesFile(instancesPath)

@@ -20,13 +20,13 @@ type Runner struct {
 	mu        sync.RWMutex
 }
 
-// Instance FRP实例
+// Instance FRP实例本地配置
 type Instance struct {
-	Name   string
-	Config string
-	cmd    *exec.Cmd
-	status types.InstanceStatus
-	logs   []string
+	Name       string
+	ConfigPath string
+	cmd        *exec.Cmd
+	status     types.InstanceStatus
+	logs       []string
 }
 
 // NewRunner 创建FRP运行器
@@ -75,9 +75,9 @@ func (r *Runner) StartInstance(name, version, frpPath, configPath string) error 
 
 	// 保存实例信息
 	instance := &Instance{
-		Name:   name,
-		Config: configPath,
-		cmd:    cmd,
+		Name:       name,
+		ConfigPath: configPath,
+		cmd:        cmd,
 		status: types.InstanceStatus{
 			Running: true,
 			Pid:     cmd.Process.Pid,

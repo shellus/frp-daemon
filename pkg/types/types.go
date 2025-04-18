@@ -1,17 +1,51 @@
 package types
 
-// MQTTConfig MQTT连接配置
-type MQTTConfig struct {
-	Broker   string `json:"broker"`    // MQTT服务器地址
-	Username string `json:"username"`  // 用户名
-	Password string `json:"password"`  // 密码
-	ClientID string `json:"client_id"` // 客户端ID
+import (
+	"crypto/rand"
+	"encoding/hex"
+)
+
+const (
+	// MQTT的默认配置
+	TopicPrefix  = "frp-client"
+	QoS          = 1
+	Retain       = true
+	CleanSession = true
+)
+
+// MQTTClientOpts MQTT客户端选项
+type MQTTClientOpts struct {
+	Broker       string `yaml:"broker"`        // MQTT代理地址
+	ClientID     string `yaml:"client_id"`     // MQTT客户端ID
+	Username     string `yaml:"username"`      // MQTT用户名
+	Password     string `yaml:"password"`      // MQTT密码
+	TopicPrefix  string `yaml:"topic_prefix"`  // MQTT主题前缀
+	QoS          int    `yaml:"qos"`           // MQTT QoS
+	Retain       bool   `yaml:"retain"`        // MQTT保留消息
+	CleanSession bool   `yaml:"clean_session"` // MQTT清理会话
 }
 
-// ClientAuth 客户端认证信息
+// ClientConfig 客户端配置，这是本程序的客户端配置，不是MQTT的客户端配置
 type ClientAuth struct {
-	ID       string `json:"id"`       // 客户端ID
-	Password string `json:"password"` // 认证密码
+	ID       string `yaml:"id"`       // 客户端ID
+	Password string `yaml:"password"` // 客户端密码
+}
+
+// generateRandomString 生成指定长度的随机字符串
+func GenerateRandomString(length int) string {
+	bytes := make([]byte, length/2)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(bytes)
+}
+
+// InstanceConfigLocal FRP实例配置-本地
+type InstanceConfigLocal struct {
+	Name       string `yaml:"name"`       // 实例名称
+	Version    string `yaml:"version"`    // FRP版本
+	ConfigPath string `yaml:"configPath"` // FRP配置文件
 }
 
 // Status 客户端状态
@@ -27,4 +61,12 @@ type InstanceStatus struct {
 	LastLog    []string `json:"last_log"`    // 最后100行日志
 	ExitStatus int      `json:"exit_status"` // 退出状态
 	Pid        int      `json:"pid"`         // 进程ID
+}
+
+// EMQXAPIConfig EMQX API配置，控制端用来创建MQTT用户使用
+type EMQXAPIConfig struct {
+	ApiEndpoint  string `yaml:"api_endpoint"`   // API端点
+	ApiAppKey    string `yaml:"api_app_key"`    // API App Key
+	ApiSecretKey string `yaml:"api_secret_key"` // API Secret Key
+	MQTTBroker   string `yaml:"mqtt_broker"`    // MQTT Broker
 }
