@@ -3,11 +3,14 @@ package mqtt
 import (
 	"time"
 
+	"encoding/json"
+	"log"
+
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
-type MessageHandler func(jsonMessage []byte)
+type MessageHandler func(message types.Message)
 
 type MQTT struct {
 	config types.MQTTClientOpts
@@ -45,8 +48,8 @@ func (m *MQTT) Disconnect() error {
 	return nil
 }
 
-func (m *MQTT) Publish(topic string, payload []byte, qos byte, retain bool) error {
-	token := m.client.Publish(topic, qos, retain, payload)
+func (m *MQTT) Publish(topic string, message types.Message, qos byte, retain bool) error {
+	token := m.client.Publish(topic, qos, retain, message)
 	if token.Wait() && token.Error() != nil {
 		return token.Error()
 	}
@@ -55,7 +58,13 @@ func (m *MQTT) Publish(topic string, payload []byte, qos byte, retain bool) erro
 
 func (m *MQTT) Subscribe(topic string, qos byte, callback MessageHandler) error {
 	token := m.client.Subscribe(topic, qos, func(client pahomqtt.Client, msg pahomqtt.Message) {
-		callback(msg.Payload())
+		var message types.Message
+		mqttMessage := msg.Payload()
+		if err := json.Unmarshal(mqttMessage, &message); err != nil {
+			log.Printf("解析消息失败: err=%v, message=%s", err, mqttMessage)
+			return
+		}
+		callback(message)
 	})
 	if token.Wait() && token.Error() != nil {
 		return token.Error()

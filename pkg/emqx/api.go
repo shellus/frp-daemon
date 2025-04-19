@@ -10,6 +10,8 @@ import (
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
+// 文档地址：https://docs.emqx.com/en/emqx/v5.8/admin/api-docs.html
+
 // API EMQX API客户端
 type API struct {
 	config *types.EMQXAPIConfig

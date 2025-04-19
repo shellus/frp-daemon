@@ -1,15 +1,12 @@
-package main
+package client
 
 import (
 	"fmt"
 	"log"
 	"os"
 
-	config "github.com/shellus/frp-daemon/pkg/client"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
-
-type Handler struct{}
 
 // existsInstance 检查实例是否存在
 func existsInstance(instances []types.InstanceConfigLocal, name string) bool {
@@ -32,24 +29,24 @@ func removeInstance(instances []types.InstanceConfigLocal, name string) []types.
 }
 
 // HandleUpdate 处理下发frp实例
-func (h *handler) HandleUpdate(instance types.InstanceConfigRemote) {
+func (c *Client) HandleUpdate(instance types.InstanceConfigRemote) {
 	log.Printf("处理下发frp实例指令: %s", instance.Name)
 
 	// 检查已存在实例，停止并从内存配置中移除
-	if existsInstance(instancesFile.Instances, instance.Name) {
+	if existsInstance(c.instancesFile.Instances, instance.Name) {
 		log.Printf("实例 %s 已存在，停止实例", instance.Name)
-		if err := StopFrpInstance(instance.Name); err != nil {
+		if err := c.StopFrpInstance(instance.Name); err != nil {
 			log.Printf("停止实例 %s 失败: %v", instance.Name, err)
 			return
 		}
-		instancesFile.Instances = removeInstance(instancesFile.Instances, instance.Name)
+		c.instancesFile.Instances = removeInstance(c.instancesFile.Instances, instance.Name)
 		log.Printf("已存在的实例 %s 已停止", instance.Name)
 	} else {
 		log.Printf("实例 %s 不存在，开始创建", instance.Name)
 	}
 
 	// 配置写入本地文件得到文件名
-	filePath := fmt.Sprintf("%s/%s.yaml", instancesDir, instance.Name)
+	filePath := fmt.Sprintf("%s/%s.yaml", c.instancesDir, instance.Name)
 	// 写入文件
 	err := os.WriteFile(filePath, []byte(instance.ConfigContent), 0644)
 	if err != nil {
@@ -62,15 +59,15 @@ func (h *handler) HandleUpdate(instance types.InstanceConfigRemote) {
 		Version:    instance.Version,
 		ConfigPath: filePath,
 	}
-	instancesFile.Instances = append(instancesFile.Instances, localInstance)
+	c.instancesFile.Instances = append(c.instancesFile.Instances, localInstance)
 
 	// 启动实例
-	if err := StartFrpInstance(localInstance); err != nil {
+	if err := c.StartFrpInstance(localInstance); err != nil {
 		log.Printf("启动实例 %s 失败: %v", localInstance.Name, err)
 	}
 
 	// 更新实例配置文件
-	err = config.WriteInstancesFile(instancesPath, instancesFile)
+	err = WriteInstancesFile(c.instancesDir, c.instancesFile)
 	if err != nil {
 		log.Printf("写入实例配置文件失败: %v", err)
 	}

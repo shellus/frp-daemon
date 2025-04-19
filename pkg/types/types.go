@@ -3,6 +3,7 @@ package types
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 )
 
 const (
@@ -51,8 +52,8 @@ type InstanceConfigLocal struct {
 
 // InstanceConfigRemote FRP实例配置-远程
 type InstanceConfigRemote struct {
-	Name          string `yaml:"name"`          // 实例名称
-	Version       string `yaml:"version"`       // FRP版本
+	Name          string `yaml:"name"`           // 实例名称
+	Version       string `yaml:"version"`        // FRP版本
 	ConfigContent string `yaml:"config_content"` // FRP配置文件内容
 }
 
@@ -77,4 +78,37 @@ type EMQXAPIConfig struct {
 	ApiAppKey    string `yaml:"api_app_key"`    // API App Key
 	ApiSecretKey string `yaml:"api_secret_key"` // API Secret Key
 	MQTTBroker   string `yaml:"mqtt_broker"`    // MQTT Broker
+}
+
+// MessageAction 消息动作常量
+type MessageAction string
+
+const (
+	// MessageActionPing 心跳
+	MessageActionPing MessageAction = "ping"
+	// MessageActionUpdate 对应的Payload是InstanceConfigRemote
+	MessageActionUpdate MessageAction = "update"
+)
+
+type MessageType string
+
+const (
+	// Req 请求
+	Req MessageType = "req"
+	// Resp 响应
+	Resp MessageType = "resp"
+)
+
+// Message MQTT共用消息外包装，双向数据体都是这个
+type Message struct {
+	SenderClientId   string          `json:"sender_client_id"`   // 发送者客户端ID
+	ReceiverClientId string          `json:"receiver_client_id"` // 接收者客户端ID
+	MessageId        string          `json:"message_id"`         // 消息ID，一般为UUID，resp和req的message_id相同
+	Type             MessageType     `json:"type"`               // 消息类型
+	Action           MessageAction   `json:"action"`             // 消息动作
+	Payload          json.RawMessage `json:"payload"`            // 消息负载
+}
+
+type PingMessage struct {
+	Time int64 `json:"time"` // 时间戳
 }
