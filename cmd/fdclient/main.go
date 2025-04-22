@@ -52,7 +52,7 @@ func main() {
 	}
 	client.Start()
 
-	log.Printf("客户端 %s 启动成功, frp实例数：%d", cfg.Client.Name, len(instancesFile.Instances))
+	log.Printf("客户端 %s[%s] 启动成功, frp实例数：%d", cfg.Client.Name, cfg.Client.ClientId, len(instancesFile.Instances))
 
 	// 设置信号处理
 	sigChan := make(chan os.Signal, 1)

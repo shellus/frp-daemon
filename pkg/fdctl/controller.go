@@ -17,6 +17,12 @@ type Controller struct {
 }
 
 func NewController(auth types.ClientAuth, mqttOpts types.MQTTClientOpts) (*Controller, error) {
+	if auth.ClientId == "" {
+		return nil, errors.New("auth.ClientId is empty")
+	}
+	if mqttOpts.Broker == "" {
+		return nil, errors.New("mqttOpts.Broker is empty")
+	}
 	return &Controller{
 		auth:     auth,
 		mqttOpts: mqttOpts,
@@ -25,7 +31,10 @@ func NewController(auth types.ClientAuth, mqttOpts types.MQTTClientOpts) (*Contr
 
 // 连接MQTT
 func (c *Controller) ConnectMQTT() error {
-	mqttClient := mqtt.NewMQTT(c.mqttOpts)
+	mqttClient, err := mqtt.NewMQTT(c.mqttOpts)
+	if err != nil {
+		return fmt.Errorf("mqtt connect failed: %v", err)
+	}
 	if err := mqttClient.Connect(); err != nil {
 		return fmt.Errorf("mqtt connect failed: %v", err)
 	}

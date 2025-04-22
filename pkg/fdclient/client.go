@@ -1,6 +1,7 @@
 package fdclient
 
 import (
+	"errors"
 	"log"
 
 	"github.com/shellus/frp-daemon/pkg/frp"
@@ -20,6 +21,13 @@ type Client struct {
 }
 
 func NewClient(auth types.ClientAuth, mqttConfig types.MQTTClientOpts, instancesFile *InstancesFile, runner *frp.Runner, binDir, instancesDir string) (*Client, error) {
+	if auth.ClientId == "" {
+		return nil, errors.New("auth.ClientId is empty")
+	}
+	if mqttConfig.Broker == "" {
+		return nil, errors.New("mqttConfig.Broker is empty")
+	}
+
 	client := &Client{
 		auth:          auth,
 		mqttConfig:    mqttConfig,
@@ -29,7 +37,10 @@ func NewClient(auth types.ClientAuth, mqttConfig types.MQTTClientOpts, instances
 		instancesDir:  instancesDir,
 	}
 
-	mqtt := mqttC.NewMQTT(mqttConfig)
+	mqtt, err := mqttC.NewMQTT(mqttConfig)
+	if err != nil {
+		return nil, err
+	}
 	if err := mqtt.Connect(); err != nil {
 		return nil, err
 	}

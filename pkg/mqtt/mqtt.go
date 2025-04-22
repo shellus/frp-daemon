@@ -1,6 +1,8 @@
 package mqtt
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"encoding/json"
@@ -17,8 +19,11 @@ type MQTT struct {
 	client pahomqtt.Client
 }
 
-func NewMQTT(config types.MQTTClientOpts) *MQTT {
-	return &MQTT{config: config}
+func NewMQTT(config types.MQTTClientOpts) (*MQTT, error) {
+	if config.Broker == "" {
+		return nil, errors.New("mqtt config broker is empty")
+	}
+	return &MQTT{config: config}, nil
 }
 
 func (m *MQTT) Connect() error {
@@ -33,13 +38,34 @@ func (m *MQTT) Connect() error {
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(1 * time.Second)
 
+	// 添加连接超时
+	opts.SetConnectTimeout(10 * time.Second)
+	// 设置最大重连次数，避免无限等待
+	opts.SetAutoReconnect(true)
+	opts.SetMaxReconnectInterval(60 * time.Second)
+
+	// 添加连接回调，处理连接失败的情况
+	opts.SetConnectionLostHandler(func(client pahomqtt.Client, err error) {
+		log.Printf("MQTT连接断开: %v", err)
+	})
+
+	opts.SetOnConnectHandler(func(client pahomqtt.Client) {
+		log.Printf("MQTT连接成功")
+	})
+
 	client := pahomqtt.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		return token.Error()
+	connToken := client.Connect()
+
+	// 等待连接完成，设置超时
+	if !connToken.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("MQTT连接超时，请检查服务器地址或网络连接：%s", m.config.Broker)
+	}
+
+	if connToken.Error() != nil {
+		return fmt.Errorf("MQTT连接失败，请检查用户名密码是否正确：%s", connToken.Error())
 	}
 
 	m.client = client
-
 	return nil
 }
 
@@ -49,7 +75,13 @@ func (m *MQTT) Disconnect() error {
 }
 
 func (m *MQTT) Publish(topic string, message types.Message, qos byte, retain bool) error {
-	token := m.client.Publish(topic, qos, retain, message)
+	// 序列化消息为JSON
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("marshal message failed: %v", err)
+	}
+
+	token := m.client.Publish(topic, qos, retain, jsonData)
 	if token.Wait() && token.Error() != nil {
 		return token.Error()
 	}

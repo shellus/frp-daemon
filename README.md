@@ -10,6 +10,10 @@
 - [pkg/installer]：用于安装指定版本的frp二进制文件。
 - [pkg/types]：主控被控端共用的业务数据结构。
 
+## 开始
+- 获得emqx的api_app_key和api_secret_key，写入controller.yml
+- 运行fdctl new -name fdctl，创建一组mqtt和client信息，写入controller.yml，因为控制端也是一个标准的client。
+
 ## 进度
 - [✓] 下载指定版本frp二进制
 - [✓] 运行多个frp实例

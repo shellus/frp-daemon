@@ -240,6 +240,19 @@ func handlePingCmd(cfg *fdctl.ControllerConfig) {
 		log.Fatal("请使用 -name 参数指定客户端名称")
 	}
 
+	// 名称转为clientId
+	var clientId string
+	for _, client := range cfg.Clients {
+		if client.Name == *pingClientName {
+			clientId = client.ClientId
+			break
+		}
+	}
+
+	if clientId == "" {
+		log.Fatalf("未找到名为 %s 的客户端", *pingClientName)
+	}
+
 	// 创建控制器
 	ctrl, err := createController(cfg)
 	if err != nil {
@@ -247,11 +260,11 @@ func handlePingCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	// 发送ping消息
-	if err := ctrl.SendPing(*pingClientName); err != nil {
+	if err := ctrl.SendPing(clientId); err != nil {
 		log.Fatalf("发送ping消息失败: %v", err)
 	}
 
-	log.Printf("已向客户端 %s 发送ping消息", *pingClientName)
+	log.Printf("已向客户端 %s[%s] 发送ping消息", *pingClientName, clientId)
 }
 
 func runController() {
