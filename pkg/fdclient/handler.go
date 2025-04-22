@@ -1,10 +1,13 @@
-package client
+package fdclient
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
+	mqttC "github.com/shellus/frp-daemon/pkg/mqtt"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
@@ -28,8 +31,32 @@ func removeInstance(instances []types.InstanceConfigLocal, name string) []types.
 	return instances
 }
 
+func (c *Client) HandlePing(message types.Message) {
+	log.Printf("处理心跳消息: %s", message.MessageId)
+	pingBytes, err := json.Marshal(types.PingMessage{
+		Time: time.Now().Unix(),
+	})
+	if err != nil {
+		log.Printf("序列化心跳消息失败: %v", err)
+		return
+	}
+	// 心跳
+	pingReply := types.Message{
+		MessageId: message.MessageId,
+		Action:    types.MessageActionPing,
+		Payload:   pingBytes,
+		Type:      types.Resp,
+	}
+	c.mqtt.Publish(mqttC.ReplyTopic(c.mqttConfig.TopicPrefix, message.SenderClientId), pingReply, byte(c.mqttConfig.QoS), false)
+}
+
 // HandleUpdate 处理下发frp实例
-func (c *Client) HandleUpdate(instance types.InstanceConfigRemote) {
+func (c *Client) HandleUpdate(message types.Message) {
+	var instance types.InstanceConfigRemote
+	if err := json.Unmarshal(message.Payload, &instance); err != nil {
+		log.Printf("HandleUpdate 解析实例配置失败: %v", err)
+		return
+	}
 	log.Printf("处理下发frp实例指令: %s", instance.Name)
 
 	// 检查已存在实例，停止并从内存配置中移除

@@ -14,11 +14,11 @@ import (
 
 // API EMQX API客户端
 type API struct {
-	config *types.EMQXAPIConfig
+	config types.EMQXAPIConfig
 }
 
 // NewAPI 创建EMQX API客户端
-func NewAPI(config *types.EMQXAPIConfig) *API {
+func NewAPI(config types.EMQXAPIConfig) *API {
 	return &API{
 		config: config,
 	}

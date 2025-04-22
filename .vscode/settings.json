@@ -1,0 +1,8 @@
+{
+    "terminal.integrated.env.linux": {
+        "FRP_DAEMON_BASE_DIR": "${workspaceFolder}/.frp-daemon"
+    },
+    "terminal.integrated.env.windows": {
+        "FRP_DAEMON_BASE_DIR": "${workspaceFolder}\\.frp-daemon"
+    }
+} 

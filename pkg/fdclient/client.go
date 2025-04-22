@@ -1,9 +1,7 @@
-package client
+package fdclient
 
 import (
-	"encoding/json"
 	"log"
-	"time"
 
 	"github.com/shellus/frp-daemon/pkg/frp"
 	"github.com/shellus/frp-daemon/pkg/installer"
@@ -41,28 +39,9 @@ func NewClient(auth types.ClientAuth, mqttConfig types.MQTTClientOpts, instances
 		// 判断消息action
 		switch message.Action {
 		case types.MessageActionPing:
-			pingBytes, err := json.Marshal(types.PingMessage{
-				Time: time.Now().Unix(),
-			})
-			if err != nil {
-				log.Printf("序列化心跳消息失败: %v", err)
-				return
-			}
-			// 心跳
-			pingReply := types.Message{
-				MessageId: message.MessageId,
-				Action:    types.MessageActionPing,
-				Payload:   pingBytes,
-				Type:      types.Resp,
-			}
-			client.mqtt.Publish(mqttC.ReplyTopic(mqttConfig.TopicPrefix, message.SenderClientId), pingReply, byte(mqttConfig.QoS), false)
+			client.HandlePing(message)
 		case types.MessageActionUpdate:
-			var instance types.InstanceConfigRemote
-			if err := json.Unmarshal(message.Payload, &instance); err != nil {
-				log.Printf("解析实例配置失败: %v", err)
-				return
-			}
-			client.HandleUpdate(instance)
+			client.HandleUpdate(message)
 		default:
 			log.Printf("未处理的消息动作: action=%s, payload=%s", message.Action, message.Payload)
 		}
@@ -78,7 +57,6 @@ func (c *Client) Start() {
 		}
 		log.Printf("启动实例 %s 成功，进程ID: %d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
 	}
-	log.Println("客户端启动， 这里似乎应该启动并等待MQTT？")
 }
 
 func (c *Client) Stop() (err error) {

@@ -1,9 +1,8 @@
-package client
+package fdclient
 
 import (
 	"errors"
 	"os"
-	"path/filepath"
 
 	"github.com/shellus/frp-daemon/pkg/types"
 	"gopkg.in/yaml.v3"
@@ -44,14 +43,15 @@ func LoadInstancesFile(path string) (*InstancesFile, error) {
 	if path == "" {
 		return nil, errors.New("path is empty")
 	}
-
-	// 获取instances.yaml的绝对路径
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
+	// 如果文件不存在，调用WriteInstancesFile
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		err = WriteInstancesFile(path, &InstancesFile{})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	data, err := os.ReadFile(absPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

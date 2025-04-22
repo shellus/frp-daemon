@@ -42,7 +42,7 @@ func EnsureFRPInstalled(binDir, version string) (string, error) {
 		return "", fmt.Errorf("下载并解压FRP失败: %v", err)
 	}
 
-	return filepath.Join(binDir, version, "frpc"), nil
+	return filepath.Join(binDir, fmt.Sprintf("frpc-%s%s", version, ext)), nil
 }
 
 // IsFRPInstalled 检查指定版本的FRP是否已安装
