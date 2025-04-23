@@ -47,18 +47,15 @@ func (c *Controller) ConnectMQTT() error {
 }
 
 // 实现配置下发
-func (c *Controller) SendConfig(clientId string, config *types.InstanceConfigLocal) error {
+func (c *Controller) SendConfig(clientId string, config types.InstanceConfigLocal) error {
 	if clientId == "" {
-		return errors.New("要发送到的clientId为空")
-	}
-	if config == nil {
-		return errors.New("实例config为空")
+		return errors.New("下发配置要发送到的clientId为空")
 	}
 
 	// 读取配置文件内容
 	configContent, err := os.ReadFile(config.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("读取frpc.ini文件失败，err=%v，configPaht=%s", err, config.ConfigPath)
+		return fmt.Errorf("下发配置读取frpc.ini文件失败，err=%v，configPaht=%s", err, config.ConfigPath)
 	}
 
 	// 创建远程配置对象
@@ -73,26 +70,19 @@ func (c *Controller) SendConfig(clientId string, config *types.InstanceConfigLoc
 	if err != nil {
 		return err
 	}
-
-	// 发布消息 TODO 改为task.Message的封装，业务层只操作任务，不直接操作mqtt的发布订阅。
-	waiter, err := c.mqttClient.SyncAction(task.MessagePending{
+	// 异步行为调用
+	err = c.mqttClient.RsyncAction(task.MessagePending{
 		MessageId:        types.GenerateRandomString(16),
 		SenderClientId:   c.auth.ClientId,
 		ReceiverClientId: clientId,
 		Action:           types.MessageActionUpdate,
 		Payload:          configJSON,
+		Expiration:       time.Now().Add(3 * 24 * time.Hour).Unix(),
 	})
 	if err != nil {
-		return fmt.Errorf("同步调用行为失败，err=%v", err)
+		return fmt.Errorf("下发配置发送失败，err=%v", err)
 	}
-	remoteResult, err := waiter.Wait()
-	if err != nil {
-		return fmt.Errorf("同步调用行为远端执行失败，err=%v", err)
-	}
-	if remoteResult == nil {
-		return errors.New("同步调用行为远端执行失败，value为空")
-	}
-	log.Printf("同步调用行为远端结果，value=%v", remoteResult)
+	log.Printf("下发配置发送成功")
 	return nil
 }
 
@@ -102,41 +92,44 @@ func (c *Controller) SendPing(clientId string) error {
 		return errors.New("clientId is empty")
 	}
 	pingMessage := types.PingMessage{
-		Time: time.Now().Unix(),
+		Time: time.Now().UnixMilli(),
 	}
 	pingMessageJSON, err := json.Marshal(pingMessage)
 	if err != nil {
 		return fmt.Errorf("marshal ping message failed: %v", err)
 	}
-	// 创建消息
-	message := task.MessagePending{
+
+	// 同步行为调用
+	waiter, err := c.mqttClient.SyncAction(task.MessagePending{
 		MessageId:        types.GenerateRandomString(16),
 		SenderClientId:   c.auth.ClientId,
 		ReceiverClientId: clientId,
 		Action:           types.MessageActionPing,
 		Payload:          json.RawMessage(pingMessageJSON),
-	}
-
-	// 发布消息
-	waiter, err := c.mqttClient.SyncAction(message)
+		Expiration:       time.Now().Add(10 * time.Second).Unix(),
+	})
 	if err != nil {
 		return fmt.Errorf("publish failed: %v", err)
 	}
 
 	remoteResult, err := waiter.Wait()
 	if err != nil {
-		return fmt.Errorf("同步调用行为远端执行失败，err=%v", err)
+		return fmt.Errorf("延迟测试远端执行失败，err=%v", err)
 	}
 	if remoteResult == nil {
-		return errors.New("同步调用行为远端执行失败，value为空")
+		return errors.New("延迟测试远端执行失败，value为空")
 	}
-	log.Printf("同步调用行为远端结果，value=%v", remoteResult)
+	// json反序列化
+	var pingResult types.PingMessage
+	if err := json.Unmarshal(remoteResult, &pingResult); err != nil {
+		return fmt.Errorf("延迟测试远端结果反序列化失败，err=%v", err)
+	}
+	log.Printf("延迟测试远端结果，单向延迟=%d，双向延迟=%d", pingResult.Time-pingMessage.Time, time.Now().UnixMilli()-pingMessage.Time)
 	return nil
 }
 
 // 列出客户端实例
 func (c *Controller) ListInstances(clientId string) ([]types.InstanceConfigLocal, error) {
-
 	return nil, errors.New("not implemented")
 }
 

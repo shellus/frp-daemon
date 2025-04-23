@@ -26,9 +26,10 @@ func (c *Client) HandlePing(action string, payload []byte) (value []byte, err er
 		log.Printf("处理ping指令解析失败，Error=%v", err)
 		return
 	}
-	log.Printf("处理心跳消息: Time: %d", ping.Time)
+	now := time.Now().UnixMilli()
+	log.Printf("处理心跳消息，单向延迟=%dms", now-ping.Time)
 	pingBytes, err := json.Marshal(types.PingMessage{
-		Time: time.Now().Unix(),
+		Time: now,
 	})
 	if err != nil {
 		log.Printf("序列化心跳消息失败: %v", err)

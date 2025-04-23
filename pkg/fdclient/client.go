@@ -38,7 +38,7 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 		return nil, fmt.Errorf("创建安装器失败，Error=%v", err)
 	}
 
-	client := &Client{
+	c := &Client{
 		configFile:   configFile,
 		runner:       runner,
 		binDir:       binDir,
@@ -50,14 +50,17 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 	if err != nil {
 		return nil, err
 	}
+
+	mqtt.SubscribeAction(types.MessageActionUpdate, c.HandleUpdate)
+	mqtt.SubscribeAction(types.MessageActionPing, c.HandlePing)
+
 	if err := mqtt.Connect(); err != nil {
 		return nil, err
 	}
 
-	client.mqtt = mqtt
-	client.mqtt.SubscribeAction(types.MessageActionUpdate, client.HandleUpdate)
+	c.mqtt = mqtt
 
-	return client, nil
+	return c, nil
 }
 
 func (c *Client) Start() (err error) {

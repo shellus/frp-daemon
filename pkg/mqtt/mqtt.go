@@ -32,7 +32,8 @@ func NewMQTT(config types.MQTTClientOpts) (*MQTT, error) {
 	if config.Broker == "" {
 		return nil, errors.New("mqtt config broker is empty")
 	}
-	return &MQTT{
+
+	m := &MQTT{
 		config:             config,
 		topicPrefix:        config.TopicPrefix,
 		qos:                1,
@@ -40,10 +41,8 @@ func NewMQTT(config types.MQTTClientOpts) (*MQTT, error) {
 		cleanSession:       false,
 		subscribeActionArr: make(map[string]MessageHandler),
 		waiters:            make(map[string]*task.Waiter),
-	}, nil
-}
+	}
 
-func (m *MQTT) Connect() error {
 	opts := pahomqtt.NewClientOptions()
 	opts.AddBroker(m.config.Broker)
 	opts.SetUsername(m.config.Username)
@@ -54,7 +53,6 @@ func (m *MQTT) Connect() error {
 	opts.SetPingTimeout(10 * time.Second)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(1 * time.Second)
-
 	// 添加连接超时
 	opts.SetConnectTimeout(10 * time.Second)
 	// 设置最大重连次数，避免无限等待
@@ -69,10 +67,14 @@ func (m *MQTT) Connect() error {
 	opts.SetOnConnectHandler(func(client pahomqtt.Client) {
 		log.Printf("MQTT连接成功")
 	})
+	m.paho = pahomqtt.NewClient(opts)
 
-	client := pahomqtt.NewClient(opts)
-	connToken := client.Connect()
+	return m, nil
+}
 
+func (m *MQTT) Connect() error {
+
+	connToken := m.paho.Connect()
 	// 等待连接完成，设置超时
 	if !connToken.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("MQTT连接超时，请检查服务器地址或网络连接：%s", m.config.Broker)
@@ -82,8 +84,6 @@ func (m *MQTT) Connect() error {
 		return fmt.Errorf("MQTT连接失败，请检查用户名密码是否正确：%s", connToken.Error())
 	}
 
-	m.paho = client
-	m.subscribeActionArr = make(map[string]MessageHandler)
 	m.registerTaskTopics()
 	return nil
 }
@@ -156,7 +156,7 @@ func (m *MQTT) onTopicPending(msg task.MessagePending) {
 		}
 	}
 	if callback == nil {
-		log.Fatalf("行为调用没有找到回调函数，actionName=%s", msg.Action)
+		log.Printf("行为调用没有找到回调函数，actionName=%s", msg.Action)
 		return
 	}
 	value, err := callback(string(msg.Action), msg.Payload)
@@ -187,44 +187,59 @@ func (m *MQTT) onTopicPending(msg task.MessagePending) {
 }
 
 func (m *MQTT) onTopicAsk(msg task.MessageAsk) {
-	log.Printf("收到行为调用ask，MessageId=%s", msg.MessageId)
+	// log.Printf("收到行为调用ask，MessageId=%s", msg.MessageId)
 }
 func (m *MQTT) onTopicComplete(msg task.MessageComplete) {
-	log.Printf("收到行为调用Complete，MessageId=%s, Value=%v", msg.MessageId, msg.Value)
+	// log.Printf("收到行为调用Complete，MessageId=%s, Value=%s", msg.MessageId, msg.Value)
 	if waiter, ok := m.waiters[msg.MessageId]; ok {
 		waiter.Ch <- msg.Value
 		delete(m.waiters, msg.MessageId)
 	}
 }
 func (m *MQTT) onTopicFailed(msg task.MessageFailed) {
-	log.Printf("收到行为调用Failed，MessageId=%s, Error=%v", msg.MessageId, msg.Error)
+	// log.Printf("收到行为调用Failed，MessageId=%s, Error=%s", msg.MessageId, msg.Error)
 	if waiter, ok := m.waiters[msg.MessageId]; ok {
 		waiter.Ch <- errors.New(string(msg.Error))
 		delete(m.waiters, msg.MessageId)
 	}
 }
+func (m *MQTT) RsyncAction(action task.MessagePending) error {
+	return m.action(action)
+}
 func (m *MQTT) SyncAction(action task.MessagePending) (*task.Waiter, error) {
-	if action.MessageId == "" {
-		return nil, errors.New("消息ID为空")
-	}
-	// 创建等待器
-	waiter := task.NewWaiter(action.MessageId)
+	waiter := task.NewWaiter(action.MessageId, time.Unix(action.Expiration, 0))
 	m.waiters[action.MessageId] = waiter
+	err := m.action(action)
+	if err != nil {
+		delete(m.waiters, action.MessageId)
+		return nil, err
+	}
+	return waiter, nil
+}
+
+func (m *MQTT) action(action task.MessagePending) error {
+	if action.MessageId == "" {
+		return errors.New("消息ID为空")
+	}
+	if action.Expiration == 0 {
+		return errors.New("超时时间必须设置")
+	}
+	if action.Expiration > time.Now().Add(3*24*time.Hour).Unix() {
+		return errors.New("超时时间不得大于3天")
+	}
 
 	// 序列化消息为JSON
 	jsonData, err := json.Marshal(action)
 	if err != nil {
-		delete(m.waiters, action.MessageId)
-		return nil, err
+		return err
 	}
 
 	err = m.publish(task.TopicPending(m.topicPrefix, action.ReceiverClientId), jsonData, m.qos, m.retain)
 	if err != nil {
-		delete(m.waiters, action.MessageId)
-		return nil, err
+		return err
 	}
 
-	return waiter, nil
+	return nil
 }
 func (m *MQTT) publish(topic string, payload []byte, qos byte, retain bool) error {
 	token := m.paho.Publish(topic, qos, retain, payload)

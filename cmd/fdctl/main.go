@@ -223,7 +223,7 @@ func handleUpdateCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	// 创建配置对象
-	config := &types.InstanceConfigLocal{
+	config := types.InstanceConfigLocal{
 		Name:       *instanceName,
 		Version:    *frpVersion,
 		ConfigPath: *configFile,

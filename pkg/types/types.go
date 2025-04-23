@@ -80,5 +80,5 @@ const (
 )
 
 type PingMessage struct {
-	Time int64 `json:"time"` // 时间戳
+	Time int64 `json:"time"` // 时间戳，毫秒
 }
