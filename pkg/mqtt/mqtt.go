@@ -136,6 +136,11 @@ func (m *MQTT) registerTaskTopics() {
 	})
 }
 func (m *MQTT) onTopicPending(msg task.MessagePending) {
+	// 如果已经超过时间，则丢弃
+	if msg.Expiration < time.Now().Unix() {
+		log.Printf("消息已过期，丢弃，messageId=%s", msg.MessageId)
+		return
+	}
 	// 先回复一个ask
 	askMsg := task.MessageAsk{
 		MessageId: msg.MessageId,
