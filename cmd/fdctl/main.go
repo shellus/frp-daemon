@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/shellus/frp-daemon/pkg/emqx"
 	cl "github.com/shellus/frp-daemon/pkg/fdclient"
 	"github.com/shellus/frp-daemon/pkg/fdctl"
@@ -14,10 +15,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var logger zerolog.Logger
+
 // 全局配置路径
 var configFilePath string
 
 func main() {
+	logger = zerolog.New(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: time.DateTime,
+		FormatTimestamp: func(i interface{}) string {
+			return time.Now().Format(time.DateTime)
+		},
+	}).Level(zerolog.InfoLevel).With().Timestamp().Logger()
 	// 定义目录
 	var baseDir string
 	if os.Getenv("FRP_DAEMON_BASE_DIR") != "" {
@@ -25,7 +35,7 @@ func main() {
 	} else {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			log.Fatalf("获取用户家目录失败: %v", err)
+			logger.Fatal().Msgf("获取用户家目录失败: %v", err)
 		}
 		baseDir = filepath.Join(homeDir, ".frp-daemon")
 	}
@@ -35,7 +45,7 @@ func main() {
 	// 加载控制端配置
 	cfg, err := fdctl.LoadControllerConfig(configFilePath)
 	if err != nil {
-		log.Fatalf("加载配置失败: %v", err)
+		logger.Fatal().Msgf("加载配置失败: %v", err)
 	}
 
 	// 检查子命令
@@ -55,7 +65,7 @@ func main() {
 	case "ping":
 		handlePingCmd(cfg)
 	default:
-		log.Fatalf("未知命令: %s", os.Args[1])
+		logger.Fatal().Msgf("未知命令: %s", os.Args[1])
 	}
 }
 
@@ -67,12 +77,12 @@ func handleNewCmd(cfg *fdctl.ControllerConfig) {
 
 	// 解析子命令参数
 	if err := newCmd.Parse(os.Args[2:]); err != nil {
-		log.Fatalf("解析参数失败: %v", err)
+		logger.Fatal().Msgf("解析参数失败: %v", err)
 	}
 
 	// 检查必需参数
 	if *clientName == "" {
-		log.Fatal("请使用 -name 参数指定客户端名称")
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
 	}
 
 	// 创建EMQX API客户端
@@ -87,7 +97,7 @@ func handleNewCmd(cfg *fdctl.ControllerConfig) {
 
 	mqttconect, err := api.CreateUser(auth)
 	if err != nil {
-		log.Fatalf("创建MQTT用户失败: %v", err)
+		logger.Fatal().Msgf("创建MQTT用户失败: %v", err)
 	}
 
 	// 将结构体转换为YAML格式
@@ -96,16 +106,16 @@ func handleNewCmd(cfg *fdctl.ControllerConfig) {
 		Mqtt:   *mqttconect,
 	})
 	if err != nil {
-		log.Fatalf("转换客户端配置到YAML失败: %v", err)
+		logger.Fatal().Msgf("转换客户端配置到YAML失败: %v", err)
 	}
 
-	log.Printf("生成客户端成功\n# 请将以下内容保存到client.yaml文件中，作为被控端的配置，本配置中的mqtt部分只会出现一次\n%s", string(yamlStr))
+	logger.Info().Msgf("生成客户端成功\n# 请将以下内容保存到client.yaml文件中，作为被控端的配置，本配置中的mqtt部分只会出现一次\n%s", string(yamlStr))
 
 	cfg.Clients = append(cfg.Clients, *auth)
 	if err := fdctl.WriteControllerConfig(*cfg, configFilePath); err != nil {
-		log.Fatalf("写入控制器配置失败: %v", err)
+		logger.Fatal().Msgf("写入控制器配置失败: %v", err)
 	}
-	log.Printf("被控端配置写入成功")
+	logger.Info().Msg("被控端配置写入成功")
 }
 
 // 处理delete子命令
@@ -116,12 +126,12 @@ func handleDeleteCmd(cfg *fdctl.ControllerConfig) {
 
 	// 解析delete子命令参数
 	if err := deleteCmd.Parse(os.Args[2:]); err != nil {
-		log.Fatalf("解析参数失败: %v", err)
+		logger.Fatal().Msgf("解析参数失败: %v", err)
 	}
 
 	// 检查必需参数
 	if *deleteClientName == "" {
-		log.Fatal("请使用 -name 参数指定要删除的客户端名称")
+		logger.Fatal().Msg("请使用 -name 参数指定要删除的客户端名称")
 	}
 
 	// 查找要删除的客户端
@@ -136,7 +146,7 @@ func handleDeleteCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	if clientIndex == -1 {
-		log.Fatalf("未找到名为 %s 的客户端", *deleteClientName)
+		logger.Fatal().Msgf("未找到名为 %s 的客户端", *deleteClientName)
 	}
 
 	// 创建EMQX API客户端
@@ -144,7 +154,7 @@ func handleDeleteCmd(cfg *fdctl.ControllerConfig) {
 
 	// 删除MQTT用户
 	if err := api.DeleteUser(clientToDelete); err != nil {
-		log.Printf("删除MQTT用户失败: %v", err)
+		logger.Fatal().Msgf("删除MQTT用户失败: %v", err)
 		return
 	}
 
@@ -153,16 +163,16 @@ func handleDeleteCmd(cfg *fdctl.ControllerConfig) {
 
 	// 保存更新后的配置
 	if err := fdctl.WriteControllerConfig(*cfg, configFilePath); err != nil {
-		log.Fatalf("写入控制器配置失败: %v", err)
+		logger.Fatal().Msgf("写入控制器配置失败: %v", err)
 	}
 
-	log.Printf("成功删除客户端: %s", *deleteClientName)
+	logger.Info().Msgf("成功删除客户端: %s", *deleteClientName)
 }
 
 // createController 创建并连接控制器
 func createController(cfg *fdctl.ControllerConfig) (*fdctl.Controller, error) {
 	// 创建控制器实例
-	ctrl, err := fdctl.NewController(cfg.Client, cfg.MQTT)
+	ctrl, err := fdctl.NewController(cfg.Client, cfg.MQTT, logger)
 	if err != nil {
 		return nil, fmt.Errorf("创建控制器失败: %v", err)
 	}
@@ -186,40 +196,40 @@ func handleUpdateCmd(cfg *fdctl.ControllerConfig) {
 
 	// 解析update子命令参数
 	if err := updateCmd.Parse(os.Args[2:]); err != nil {
-		log.Fatalf("解析参数失败: %v", err)
+		logger.Fatal().Msgf("解析参数失败: %v", err)
 	}
 
 	// 检查必需参数
 	if *updateClientName == "" {
-		log.Fatal("请使用 -name 参数指定客户端名称")
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
 	}
 	if *instanceName == "" {
-		log.Fatal("请使用 -instance 参数指定实例名称")
+		logger.Fatal().Msg("请使用 -instance 参数指定实例名称")
 	}
 	if *frpVersion == "" {
-		log.Fatal("请使用 -version 参数指定frp版本")
+		logger.Fatal().Msg("请使用 -version 参数指定frp版本")
 	}
 	if *configFile == "" {
-		log.Fatal("请使用 -config 参数指定配置文件路径")
+		logger.Fatal().Msg("请使用 -config 参数指定配置文件路径")
 	}
 
 	// 名称转为clientId
-	var clientId string
+	var targetClient *types.ClientAuth
 	for _, client := range cfg.Clients {
 		if client.Name == *updateClientName {
-			clientId = client.ClientId
+			targetClient = &client
 			break
 		}
 	}
 
-	if clientId == "" {
-		log.Fatalf("未找到名为 %s 的客户端", *updateClientName)
+	if targetClient == nil {
+		logger.Fatal().Msgf("未找到名为 %s 的客户端", *updateClientName)
 	}
 
 	// 创建控制器
 	ctrl, err := createController(cfg)
 	if err != nil {
-		log.Fatalf("%v", err)
+		logger.Fatal().Msgf("%v", err)
 	}
 
 	// 创建配置对象
@@ -230,12 +240,12 @@ func handleUpdateCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	// 发送配置
-	if err := ctrl.SendConfig(clientId, config); err != nil {
-		log.Fatalf("发送配置失败: %v", err)
+	if err := ctrl.SendConfig(targetClient.ClientId, targetClient.Password, config); err != nil {
+		logger.Fatal().Msgf("发送配置失败: %v", err)
 	}
 
 	// 下发不代表客户端已经收到
-	log.Printf("配置已成功下发: %s[%s]", *updateClientName, clientId)
+	logger.Info().Msgf("配置已成功下发: %s[%s]", *updateClientName, targetClient.ClientId)
 }
 
 // 处理ping子命令
@@ -246,41 +256,41 @@ func handlePingCmd(cfg *fdctl.ControllerConfig) {
 
 	// 解析ping子命令参数
 	if err := pingCmd.Parse(os.Args[2:]); err != nil {
-		log.Fatalf("解析参数失败: %v", err)
+		logger.Fatal().Msgf("解析参数失败: %v", err)
 	}
 
 	// 检查必需参数
 	if *pingClientName == "" {
-		log.Fatal("请使用 -name 参数指定客户端名称")
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
 	}
 
 	// 名称转为clientId
-	var clientId string
+	var targetClient *types.ClientAuth
 	for _, client := range cfg.Clients {
 		if client.Name == *pingClientName {
-			clientId = client.ClientId
+			targetClient = &client
 			break
 		}
 	}
 
-	if clientId == "" {
-		log.Fatalf("未找到名为 %s 的客户端", *pingClientName)
+	if targetClient == nil {
+		logger.Fatal().Msgf("未找到名为 %s 的客户端", *pingClientName)
 	}
 
 	// 创建控制器
 	ctrl, err := createController(cfg)
 	if err != nil {
-		log.Fatalf("%v", err)
+		logger.Fatal().Msgf("%v", err)
 	}
 
 	// 发送ping消息
-	if err := ctrl.SendPing(clientId); err != nil {
-		log.Fatalf("发送ping消息失败: %v", err)
+	if err := ctrl.SendPing(targetClient.ClientId); err != nil {
+		logger.Fatal().Msgf("发送ping消息失败: %v", err)
 	}
 
-	log.Printf("已向客户端 %s[%s] 发送ping消息", *pingClientName, clientId)
+	logger.Info().Msgf("已向客户端 %s[%s] 发送ping消息", *pingClientName, targetClient.ClientId)
 }
 
 func runController() {
-	log.Println("FRP控制器启动...")
+	logger.Info().Msg("FRP控制器启动...")
 }

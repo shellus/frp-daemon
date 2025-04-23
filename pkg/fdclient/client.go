@@ -2,9 +2,9 @@ package fdclient
 
 import (
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/rs/zerolog"
 	"github.com/shellus/frp-daemon/pkg/frp"
 	installerC "github.com/shellus/frp-daemon/pkg/installer"
 	mqttC "github.com/shellus/frp-daemon/pkg/mqtt"
@@ -18,9 +18,10 @@ type Client struct {
 	binDir       string
 	instancesDir string
 	installer    *installerC.Installer
+	logger       zerolog.Logger
 }
 
-func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir string) (*Client, error) {
+func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir string, logger zerolog.Logger) (*Client, error) {
 	if configFile.ClientConfig.Client.ClientId == "" {
 		return nil, fmt.Errorf("配置错误，auth.ClientId is empty")
 	}
@@ -33,7 +34,7 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 	if _, err := os.Stat(binDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("FRP二进制目录不存在，binDir=%s", binDir)
 	}
-	installer, err := installerC.NewInstaller(binDir, "")
+	installer, err := installerC.NewInstaller(binDir, "", logger)
 	if err != nil {
 		return nil, fmt.Errorf("创建安装器失败，Error=%v", err)
 	}
@@ -44,18 +45,19 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 		binDir:       binDir,
 		instancesDir: instancesDir,
 		installer:    installer,
+		logger:       logger,
 	}
 
-	mqtt, err := mqttC.NewMQTT(configFile.ClientConfig.Mqtt)
+	mqtt, err := mqttC.NewMQTT(configFile.ClientConfig.Mqtt, logger)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("创建MQTT客户端失败，Error=%v", err)
 	}
 
 	mqtt.SubscribeAction(types.MessageActionUpdate, c.HandleUpdate)
 	mqtt.SubscribeAction(types.MessageActionPing, c.HandlePing)
 
 	if err := mqtt.Connect(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("连接MQTT失败，Error=%v", err)
 	}
 
 	c.mqtt = mqtt
@@ -66,9 +68,9 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 func (c *Client) Start() (err error) {
 	for _, localInstanceConfig := range c.configFile.ClientConfig.Instances {
 		if err := c.StartFrpInstance(localInstanceConfig); err != nil {
-			log.Printf("启动实例失败但继续，InstanceName=%s, Error=%v", localInstanceConfig.Name, err)
+			c.logger.Warn().Msgf("启动实例失败但继续，InstanceName=%s, Error=%v", localInstanceConfig.Name, err)
 		}
-		log.Printf("启动实例成功，InstanceName=%s, Pid=%d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
+		c.logger.Info().Msgf("启动实例成功，InstanceName=%s, Pid=%d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
 	}
 	return
 }

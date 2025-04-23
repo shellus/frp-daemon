@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/shellus/frp-daemon/pkg/mqtt"
 	"github.com/shellus/frp-daemon/pkg/mqtt/task"
 	"github.com/shellus/frp-daemon/pkg/types"
@@ -17,9 +17,10 @@ type Controller struct {
 	auth       types.ClientAuth
 	mqttClient *mqtt.MQTT
 	mqttOpts   types.MQTTClientOpts
+	logger     zerolog.Logger
 }
 
-func NewController(auth types.ClientAuth, mqttOpts types.MQTTClientOpts) (*Controller, error) {
+func NewController(auth types.ClientAuth, mqttOpts types.MQTTClientOpts, logger zerolog.Logger) (*Controller, error) {
 	if auth.ClientId == "" {
 		return nil, errors.New("auth.ClientId is empty")
 	}
@@ -29,12 +30,13 @@ func NewController(auth types.ClientAuth, mqttOpts types.MQTTClientOpts) (*Contr
 	return &Controller{
 		auth:     auth,
 		mqttOpts: mqttOpts,
+		logger:   logger,
 	}, nil
 }
 
 // 连接MQTT
 func (c *Controller) ConnectMQTT() error {
-	mqttClient, err := mqtt.NewMQTT(c.mqttOpts)
+	mqttClient, err := mqtt.NewMQTT(c.mqttOpts, c.logger)
 	if err != nil {
 		return fmt.Errorf("mqtt connect failed: %v", err)
 	}
@@ -47,7 +49,7 @@ func (c *Controller) ConnectMQTT() error {
 }
 
 // 实现配置下发
-func (c *Controller) SendConfig(clientId string, config types.InstanceConfigLocal) error {
+func (c *Controller) SendConfig(clientId string, clientPassword string, config types.InstanceConfigLocal) error {
 	if clientId == "" {
 		return errors.New("下发配置要发送到的clientId为空")
 	}
@@ -60,9 +62,10 @@ func (c *Controller) SendConfig(clientId string, config types.InstanceConfigLoca
 
 	// 创建远程配置对象
 	remoteConfig := types.InstanceConfigRemote{
-		Name:          config.Name,
-		Version:       config.Version,
-		ConfigContent: string(configContent),
+		ClientPassword: clientPassword,
+		Name:           config.Name,
+		Version:        config.Version,
+		ConfigContent:  string(configContent),
 	}
 
 	// 序列化配置
@@ -82,7 +85,7 @@ func (c *Controller) SendConfig(clientId string, config types.InstanceConfigLoca
 	if err != nil {
 		return fmt.Errorf("下发配置发送失败，err=%v", err)
 	}
-	log.Printf("下发配置发送成功")
+	c.logger.Info().Msg("下发配置发送成功")
 	return nil
 }
 
@@ -124,7 +127,7 @@ func (c *Controller) SendPing(clientId string) error {
 	if err := json.Unmarshal(remoteResult, &pingResult); err != nil {
 		return fmt.Errorf("延迟测试远端结果反序列化失败，err=%v", err)
 	}
-	log.Printf("延迟测试远端结果，单向延迟=%d，双向延迟=%d", pingResult.Time-pingMessage.Time, time.Now().UnixMilli()-pingMessage.Time)
+	c.logger.Info().Msgf("延迟测试远端结果，单向延迟=%d，双向延迟=%d", pingResult.Time-pingMessage.Time, time.Now().UnixMilli()-pingMessage.Time)
 	return nil
 }
 

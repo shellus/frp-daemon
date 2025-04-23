@@ -1,17 +1,25 @@
 package main
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
+	"github.com/rs/zerolog"
 	config "github.com/shellus/frp-daemon/pkg/fdclient"
 	"github.com/shellus/frp-daemon/pkg/frp"
 )
 
 func main() {
+	logger := zerolog.New(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: time.DateTime,
+		FormatTimestamp: func(i interface{}) string {
+			return time.Now().Format(time.DateTime)
+		},
+	}).Level(zerolog.InfoLevel).With().Timestamp().Logger()
 
 	// 定义目录
 	var baseDir string
@@ -20,7 +28,7 @@ func main() {
 	} else {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			log.Fatalf("获取用户家目录失败: %v", err)
+			logger.Fatal().Msgf("获取用户家目录失败，error=%v", err)
 		}
 		baseDir = filepath.Join(homeDir, ".frp-daemon")
 	}
@@ -32,23 +40,23 @@ func main() {
 	// 加载配置并上线MQTT
 	cfg, err := config.LoadClientConfig(configFilePath)
 	if err != nil {
-		log.Fatalf("加载客户端配置失败: %v", err)
+		logger.Fatal().Msgf("加载客户端配置失败，error=%v", err)
 	}
 
 	// 创建FRP运行器
-	runner := frp.NewRunner()
+	runner := frp.NewRunner(logger)
 
 	// 创建客户端
-	client, err := config.NewClient(cfg, runner, frpBinDir, frpcConfigDir)
+	client, err := config.NewClient(cfg, runner, frpBinDir, frpcConfigDir, logger)
 	if err != nil {
-		log.Fatalf("创建客户端失败: %v", err)
+		logger.Fatal().Msgf("创建客户端失败，error=%v", err)
 	}
 	err = client.Start()
 	if err != nil {
-		log.Fatalf("启动客户端失败: %v", err)
+		logger.Fatal().Msgf("启动客户端失败，error=%v", err)
 	}
 
-	log.Printf("客户端 %s[%s] 启动成功, frp实例数：%d", cfg.ClientConfig.Client.Name, cfg.ClientConfig.Client.ClientId, len(cfg.ClientConfig.Instances))
+	logger.Info().Msgf("客户端启动成功，%s[%s]，frp实例数=%d", cfg.ClientConfig.Client.Name, cfg.ClientConfig.Client.ClientId, len(cfg.ClientConfig.Instances))
 
 	// 设置信号处理
 	sigChan := make(chan os.Signal, 1)
@@ -56,12 +64,12 @@ func main() {
 
 	// 等待信号
 	<-sigChan
-	log.Println("收到关闭信号，开始优雅关闭...")
+	logger.Info().Msg("收到关闭信号，开始优雅关闭...")
 
 	// 优雅关闭所有实例
 	if err := client.Stop(); err != nil {
-		log.Printf("关闭FRP实例时发生错误: %v", err)
+		logger.Error().Msgf("关闭FRP实例时发生错误，error=%v", err)
 	}
 
-	log.Println("FRP守护进程已关闭")
+	logger.Info().Msg("FRP守护进程已关闭")
 }

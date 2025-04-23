@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -53,10 +55,11 @@ func (pw *ProgressWriter) Write(p []byte) (int, error) {
 type Installer struct {
 	BinDir string // FRP二进制文件存储目录
 	Proxy  string // GitHub代理前缀，为空则不使用代理
+	logger zerolog.Logger
 }
 
 // NewInstaller 创建一个新的FRP安装器
-func NewInstaller(binDir string, proxy string) (*Installer, error) {
+func NewInstaller(binDir string, proxy string, logger zerolog.Logger) (*Installer, error) {
 	if binDir == "" {
 		return nil, fmt.Errorf("binDir is empty")
 	}
@@ -69,6 +72,7 @@ func NewInstaller(binDir string, proxy string) (*Installer, error) {
 	return &Installer{
 		BinDir: binDir,
 		Proxy:  proxy,
+		logger: logger,
 	}, nil
 }
 
@@ -186,7 +190,7 @@ func (i *Installer) downloadAndExtract(url, version string) error {
 	}
 
 	// 发送请求
-	fmt.Printf("正在下载FRP：%s\n", url)
+	i.logger.Info().Msgf("正在下载FRP：%s", url)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -207,7 +211,7 @@ func (i *Installer) downloadAndExtract(url, version string) error {
 			percent := float64(downloaded) / float64(total) * 100
 			fmt.Printf("\r下载进度: %.2f%% (%d/%d bytes)", percent, downloaded, total)
 			if downloaded >= total {
-				fmt.Println("\n下载完成！")
+				i.logger.Info().Msg("下载完成！")
 			}
 		},
 	}
@@ -220,7 +224,7 @@ func (i *Installer) downloadAndExtract(url, version string) error {
 		return err
 	}
 
-	fmt.Println("正在解压文件...")
+	i.logger.Info().Msg("正在解压文件...")
 	// 解压文件
 	if strings.HasSuffix(url, ".zip") {
 		return i.extractZip(tmpFile.Name(), version)

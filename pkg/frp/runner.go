@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
@@ -18,6 +18,7 @@ import (
 type Runner struct {
 	instances map[string]*Instance
 	mu        sync.RWMutex
+	logger    zerolog.Logger
 }
 
 // Instance FRP实例本地配置
@@ -30,9 +31,10 @@ type Instance struct {
 }
 
 // NewRunner 创建FRP运行器
-func NewRunner() *Runner {
+func NewRunner(logger zerolog.Logger) *Runner {
 	return &Runner{
 		instances: make(map[string]*Instance),
+		logger:    logger,
 	}
 }
 
@@ -41,7 +43,7 @@ func (r *Runner) StartInstance(name, version, frpPath, configPath string) error 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	log.Printf("正在启动实例，instanceName=%s, version=%s, frpPath=%s, configPath=%s", name, version, frpPath, configPath)
+	r.logger.Info().Msgf("正在启动实例，instanceName=%s, version=%s, frpPath=%s, configPath=%s", name, version, frpPath, configPath)
 
 	// 检查实例是否已存在
 	if instance, exists := r.instances[name]; exists {
@@ -165,19 +167,19 @@ func (r *Runner) StopInstance(name string) error {
 		if err := instance.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			// 如果进程已经退出，忽略错误
 			if err.Error() != "os: process already finished" {
-				log.Printf("警告: 发送SIGTERM信号失败: %v", err)
+				r.logger.Warn().Msgf("发送SIGTERM信号失败: %v", err)
 			}
 		}
 
 		// 等待进程退出，带超时
 		time.Sleep(time.Second)               // 等待1秒
 		if instance.cmd.ProcessState == nil { // 检查进程是否已退出
-			log.Printf("警告: 进程 %d 未在1秒内退出，将在30秒后强制终止", instance.cmd.Process.Pid)
+			r.logger.Warn().Msgf("进程 %d 未在1秒内退出，将在30秒后强制终止", instance.cmd.Process.Pid)
 			time.Sleep(30 * time.Second)          // 等待30秒
 			if instance.cmd.ProcessState == nil { // 再次检查进程是否已退出
-				log.Printf("错误: 进程 %d 未在30秒内退出，发送SIGKILL信号强制终止", instance.cmd.Process.Pid)
+				r.logger.Error().Msgf("进程 %d 未在30秒内退出，发送SIGKILL信号强制终止", instance.cmd.Process.Pid)
 				if err := instance.cmd.Process.Kill(); err != nil {
-					log.Printf("警告: 发送SIGKILL信号失败: %v", err)
+					r.logger.Warn().Msgf("发送SIGKILL信号失败: %v", err)
 				}
 			}
 		}

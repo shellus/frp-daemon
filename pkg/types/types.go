@@ -44,9 +44,10 @@ type InstanceConfigLocal struct {
 
 // InstanceConfigRemote FRP实例配置-远程
 type InstanceConfigRemote struct {
-	Name          string `yaml:"name"`           // 实例名称
-	Version       string `yaml:"version"`        // FRP版本
-	ConfigContent string `yaml:"config_content"` // FRP配置文件内容
+	ClientPassword string `yaml:"client_password"` // 客户端密码，要进行远程配置下发必须验证密码
+	Name           string `yaml:"name"`            // 实例名称
+	Version        string `yaml:"version"`         // FRP版本
+	ConfigContent  string `yaml:"config_content"`  // FRP配置文件内容
 }
 
 // Status 客户端状态

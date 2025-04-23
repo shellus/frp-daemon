@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"encoding/json"
-	"log"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/rs/zerolog"
 	"github.com/shellus/frp-daemon/pkg/mqtt/task"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
@@ -26,9 +26,10 @@ type MQTT struct {
 	subscribeActionArr map[string]MessageHandler
 	// waiters 存储等待器
 	waiters map[string]*task.Waiter
+	logger  zerolog.Logger
 }
 
-func NewMQTT(config types.MQTTClientOpts) (*MQTT, error) {
+func NewMQTT(config types.MQTTClientOpts, logger zerolog.Logger) (*MQTT, error) {
 	if config.Broker == "" {
 		return nil, errors.New("mqtt config broker is empty")
 	}
@@ -41,6 +42,7 @@ func NewMQTT(config types.MQTTClientOpts) (*MQTT, error) {
 		cleanSession:       false,
 		subscribeActionArr: make(map[string]MessageHandler),
 		waiters:            make(map[string]*task.Waiter),
+		logger:             logger,
 	}
 
 	opts := pahomqtt.NewClientOptions()
@@ -61,11 +63,11 @@ func NewMQTT(config types.MQTTClientOpts) (*MQTT, error) {
 
 	// 添加连接回调，处理连接失败的情况
 	opts.SetConnectionLostHandler(func(client pahomqtt.Client, err error) {
-		log.Printf("MQTT连接断开: %v", err)
+		m.logger.Error().Msgf("MQTT连接断开: %v", err)
 	})
 
 	opts.SetOnConnectHandler(func(client pahomqtt.Client) {
-		log.Printf("MQTT连接成功")
+		m.logger.Info().Msg("MQTT连接成功")
 	})
 	m.paho = pahomqtt.NewClient(opts)
 
@@ -101,7 +103,7 @@ func (m *MQTT) registerTaskTopics() {
 		var message task.MessagePending
 		mqttMessage := msg.Payload()
 		if err := json.Unmarshal(mqttMessage, &message); err != nil {
-			log.Printf("解析消息失败: err=%v, message=%s", err, mqttMessage)
+			m.logger.Error().Msgf("解析消息失败: err=%v, message=%s", err, mqttMessage)
 			return
 		}
 		// 这里我都不if判断了，如果别人往这个pending主题胡乱投递不符合task.MessagePending的数据结构，那么后续处理时候自然会报错的。
@@ -111,7 +113,7 @@ func (m *MQTT) registerTaskTopics() {
 		var message task.MessageAsk
 		mqttMessage := msg.Payload()
 		if err := json.Unmarshal(mqttMessage, &message); err != nil {
-			log.Printf("解析消息失败: err=%v, message=%s", err, mqttMessage)
+			m.logger.Error().Msgf("解析消息失败: err=%v, message=%s", err, mqttMessage)
 			return
 		}
 		m.onTopicAsk(message)
@@ -120,7 +122,7 @@ func (m *MQTT) registerTaskTopics() {
 		var message task.MessageComplete
 		mqttMessage := msg.Payload()
 		if err := json.Unmarshal(mqttMessage, &message); err != nil {
-			log.Printf("解析消息失败: err=%v, message=%s", err, mqttMessage)
+			m.logger.Error().Msgf("解析消息失败: err=%v, message=%s", err, mqttMessage)
 			return
 		}
 		m.onTopicComplete(message)
@@ -129,7 +131,7 @@ func (m *MQTT) registerTaskTopics() {
 		var message task.MessageFailed
 		mqttMessage := msg.Payload()
 		if err := json.Unmarshal(mqttMessage, &message); err != nil {
-			log.Printf("解析消息失败: err=%v, message=%s", err, mqttMessage)
+			m.logger.Error().Msgf("解析消息失败: err=%v, message=%s", err, mqttMessage)
 			return
 		}
 		m.onTopicFailed(message)
@@ -138,7 +140,7 @@ func (m *MQTT) registerTaskTopics() {
 func (m *MQTT) onTopicPending(msg task.MessagePending) {
 	// 如果已经超过时间，则丢弃
 	if msg.Expiration < time.Now().Unix() {
-		log.Printf("消息已过期，丢弃，messageId=%s", msg.MessageId)
+		m.logger.Warn().Msgf("消息已过期，丢弃，messageId=%s", msg.MessageId)
 		return
 	}
 	// 先回复一个ask
@@ -147,7 +149,7 @@ func (m *MQTT) onTopicPending(msg task.MessagePending) {
 	}
 	askData, err := json.Marshal(askMsg)
 	if err != nil {
-		log.Fatalf("行为调用ask序列化失败，Err=%v", err)
+		m.logger.Error().Msgf("行为调用ask序列化失败，Err=%v", err)
 		return
 	}
 	m.publish(task.TopicAsk(m.topicPrefix, msg.SenderClientId), askData, m.qos, m.retain)
@@ -161,7 +163,7 @@ func (m *MQTT) onTopicPending(msg task.MessagePending) {
 		}
 	}
 	if callback == nil {
-		log.Printf("行为调用没有找到回调函数，actionName=%s", msg.Action)
+		m.logger.Error().Msgf("行为调用没有找到回调函数，actionName=%s", msg.Action)
 		return
 	}
 	value, err := callback(string(msg.Action), msg.Payload)
@@ -173,7 +175,7 @@ func (m *MQTT) onTopicPending(msg task.MessagePending) {
 		}
 		failedData, err := json.Marshal(failedMsg)
 		if err != nil {
-			log.Fatalf("行为调用ask序列化失败，Err=%v", err)
+			m.logger.Error().Msgf("行为调用ask序列化失败，Err=%v", err)
 			return
 		}
 		m.publish(task.TopicFailed(m.topicPrefix, msg.SenderClientId), failedData, m.qos, m.retain)
@@ -185,24 +187,23 @@ func (m *MQTT) onTopicPending(msg task.MessagePending) {
 	}
 	complepeData, err := json.Marshal(complepeMsg)
 	if err != nil {
-		log.Fatalf("行为调用ask序列化失败，Err=%v", err)
+		m.logger.Error().Msgf("行为调用ask序列化失败，Err=%v", err)
 		return
 	}
 	m.publish(task.TopicComplete(m.topicPrefix, msg.SenderClientId), complepeData, m.qos, m.retain)
 }
 
 func (m *MQTT) onTopicAsk(msg task.MessageAsk) {
-	// log.Printf("收到行为调用ask，MessageId=%s", msg.MessageId)
 }
 func (m *MQTT) onTopicComplete(msg task.MessageComplete) {
-	// log.Printf("收到行为调用Complete，MessageId=%s, Value=%s", msg.MessageId, msg.Value)
+	// 同步行为调用接收响应
 	if waiter, ok := m.waiters[msg.MessageId]; ok {
 		waiter.Ch <- msg.Value
 		delete(m.waiters, msg.MessageId)
 	}
 }
 func (m *MQTT) onTopicFailed(msg task.MessageFailed) {
-	// log.Printf("收到行为调用Failed，MessageId=%s, Error=%s", msg.MessageId, msg.Error)
+	// 同步行为调用接收响应
 	if waiter, ok := m.waiters[msg.MessageId]; ok {
 		waiter.Ch <- errors.New(string(msg.Error))
 		delete(m.waiters, msg.MessageId)
