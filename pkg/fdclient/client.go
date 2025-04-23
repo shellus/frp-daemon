@@ -55,17 +55,7 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 	}
 
 	client.mqtt = mqtt
-	client.mqtt.Subscribe(mqttC.MessageTopic(configFile.ClientConfig.Mqtt.TopicPrefix, configFile.ClientConfig.Client.ClientId), byte(configFile.ClientConfig.Mqtt.QoS), func(message types.Message) {
-		// 判断消息action
-		switch message.Action {
-		case types.MessageActionPing:
-			client.HandlePing(message)
-		case types.MessageActionUpdate:
-			client.HandleUpdate(message)
-		default:
-			log.Printf("未处理的消息动作: action=%s, payload=%s", message.Action, message.Payload)
-		}
-	})
+	client.mqtt.SubscribeAction(types.MessageActionUpdate, client.HandleUpdate)
 
 	return client, nil
 }
@@ -73,8 +63,7 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 func (c *Client) Start() (err error) {
 	for _, localInstanceConfig := range c.configFile.ClientConfig.Instances {
 		if err := c.StartFrpInstance(localInstanceConfig); err != nil {
-			log.Fatalf("启动实例失败，InstanceName=%s, Error=%v", localInstanceConfig.Name, err)
-			return err
+			log.Printf("启动实例失败但继续，InstanceName=%s, Error=%v", localInstanceConfig.Name, err)
 		}
 		log.Printf("启动实例成功，InstanceName=%s, Pid=%d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
 	}

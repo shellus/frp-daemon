@@ -77,14 +77,11 @@ func (a *API) CreateUser(auth *types.ClientAuth) (*types.MQTTClientOpts, error) 
 
 	// 返回MQTT配置
 	return &types.MQTTClientOpts{
-		Broker:       a.config.MQTTBroker,
-		ClientID:     auth.Name,
-		Username:     mqttClientId,
-		Password:     mqttPassword,
-		TopicPrefix:  types.TopicPrefix,
-		QoS:          types.QoS,
-		Retain:       types.Retain,
-		CleanSession: types.CleanSession,
+		Broker:      a.config.MQTTBroker,
+		ClientID:    auth.Name,
+		Username:    mqttClientId,
+		Password:    mqttPassword,
+		TopicPrefix: types.TopicPrefix,
 	}, nil
 }
 

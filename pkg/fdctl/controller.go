@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"time"
 
 	"github.com/shellus/frp-daemon/pkg/mqtt"
+	"github.com/shellus/frp-daemon/pkg/mqtt/task"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
@@ -46,19 +49,16 @@ func (c *Controller) ConnectMQTT() error {
 // 实现配置下发
 func (c *Controller) SendConfig(clientId string, config *types.InstanceConfigLocal) error {
 	if clientId == "" {
-		return errors.New("clientId is empty")
+		return errors.New("要发送到的clientId为空")
 	}
 	if config == nil {
-		return errors.New("config is nil")
+		return errors.New("实例config为空")
 	}
-
-	// 构建MQTT主题
-	topic := mqtt.MessageTopic(c.mqttOpts.TopicPrefix, clientId)
 
 	// 读取配置文件内容
 	configContent, err := os.ReadFile(config.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("read config file failed: %v", err)
+		return fmt.Errorf("读取frpc.ini文件失败，err=%v，configPaht=%s", err, config.ConfigPath)
 	}
 
 	// 创建远程配置对象
@@ -71,24 +71,28 @@ func (c *Controller) SendConfig(clientId string, config *types.InstanceConfigLoc
 	// 序列化配置
 	configJSON, err := json.Marshal(remoteConfig)
 	if err != nil {
-		return fmt.Errorf("marshal config failed: %v", err)
+		return err
 	}
 
-	// 创建消息
-	message := types.Message{
+	// 发布消息 TODO 改为task.Message的封装，业务层只操作任务，不直接操作mqtt的发布订阅。
+	waiter, err := c.mqttClient.SyncAction(task.MessagePending{
+		MessageId:        types.GenerateRandomString(16),
 		SenderClientId:   c.auth.ClientId,
 		ReceiverClientId: clientId,
-		MessageId:        types.GenerateRandomString(16),
-		Type:             types.Req,
 		Action:           types.MessageActionUpdate,
 		Payload:          configJSON,
+	})
+	if err != nil {
+		return fmt.Errorf("同步调用行为失败，err=%v", err)
 	}
-
-	// 发布消息
-	if err := c.mqttClient.Publish(topic, message, byte(c.mqttOpts.QoS), c.mqttOpts.Retain); err != nil {
-		return fmt.Errorf("publish failed: %v", err)
+	remoteResult, err := waiter.Wait()
+	if err != nil {
+		return fmt.Errorf("同步调用行为远端执行失败，err=%v", err)
 	}
-
+	if remoteResult == nil {
+		return errors.New("同步调用行为远端执行失败，value为空")
+	}
+	log.Printf("同步调用行为远端结果，value=%v", remoteResult)
 	return nil
 }
 
@@ -97,25 +101,36 @@ func (c *Controller) SendPing(clientId string) error {
 	if clientId == "" {
 		return errors.New("clientId is empty")
 	}
-
-	// 构建MQTT主题
-	topic := mqtt.MessageTopic(c.mqttOpts.TopicPrefix, clientId)
-
+	pingMessage := types.PingMessage{
+		Time: time.Now().Unix(),
+	}
+	pingMessageJSON, err := json.Marshal(pingMessage)
+	if err != nil {
+		return fmt.Errorf("marshal ping message failed: %v", err)
+	}
 	// 创建消息
-	message := types.Message{
+	message := task.MessagePending{
+		MessageId:        types.GenerateRandomString(16),
 		SenderClientId:   c.auth.ClientId,
 		ReceiverClientId: clientId,
-		MessageId:        types.GenerateRandomString(16),
-		Type:             types.Req,
 		Action:           types.MessageActionPing,
-		Payload:          nil,
+		Payload:          json.RawMessage(pingMessageJSON),
 	}
 
 	// 发布消息
-	if err := c.mqttClient.Publish(topic, message, byte(c.mqttOpts.QoS), c.mqttOpts.Retain); err != nil {
+	waiter, err := c.mqttClient.SyncAction(message)
+	if err != nil {
 		return fmt.Errorf("publish failed: %v", err)
 	}
 
+	remoteResult, err := waiter.Wait()
+	if err != nil {
+		return fmt.Errorf("同步调用行为远端执行失败，err=%v", err)
+	}
+	if remoteResult == nil {
+		return errors.New("同步调用行为远端执行失败，value为空")
+	}
+	log.Printf("同步调用行为远端结果，value=%v", remoteResult)
 	return nil
 }
 

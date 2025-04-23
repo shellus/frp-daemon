@@ -43,7 +43,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("创建客户端失败: %v", err)
 	}
-	client.Start()
+	err = client.Start()
+	if err != nil {
+		log.Fatalf("启动客户端失败: %v", err)
+	}
 
 	log.Printf("客户端 %s[%s] 启动成功, frp实例数：%d", cfg.ClientConfig.Client.Name, cfg.ClientConfig.Client.ClientId, len(cfg.ClientConfig.Instances))
 

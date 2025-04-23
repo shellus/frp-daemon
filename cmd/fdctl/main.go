@@ -234,7 +234,8 @@ func handleUpdateCmd(cfg *fdctl.ControllerConfig) {
 		log.Fatalf("发送配置失败: %v", err)
 	}
 
-	log.Printf("配置已成功发送到客户端: %s[%s]", *updateClientName, clientId)
+	// 下发不代表客户端已经收到
+	log.Printf("配置已成功下发: %s[%s]", *updateClientName, clientId)
 }
 
 // 处理ping子命令
