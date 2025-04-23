@@ -22,7 +22,7 @@
 - [✓] `fdctl new -name <clientName>`用于创建一个新的客户端
 - [✓] controller命令：ping
 - [✓] controller命令：delete
-- [✓] controller命令：update
+- [✓] `fdctl update -name <clientName> -instance <instanceName> --version 0.51.2 -config temp/frpc.ini`用于更新指定实例的配置
 - [ ] controller命令：status
 - [ ] controller命令：tail
 - [ ] 实现MQTT保留消息，允许客户端不在线也可以下发配置

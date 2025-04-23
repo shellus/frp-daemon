@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,54 +12,128 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
-	frpBaseURL = "https://github.com/fatedier/frp/releases/download/v%s/frp_%s_%s_%s.%s"
+	frpBaseURL  = "https://github.com/fatedier/frp/releases/download/v%s/frp_%s_%s_%s.%s"
+	httpTimeout = 30 * time.Second // HTTP请求超时时间
 )
 
-// EnsureFRPInstalled 确保指定版本的FRP已安装
-func EnsureFRPInstalled(binDir, version string) (string, error) {
-	// 创建frp目录
-	if err := os.MkdirAll(filepath.Join(binDir, version), 0755); err != nil {
-		return "", fmt.Errorf("创建frp目录失败: %v", err)
+// ProgressWriter 进度写入器
+type ProgressWriter struct {
+	Total      int64              // 总大小
+	Downloaded int64              // 已下载大小
+	LastOutput int64              // 上次输出进度时的大小
+	OnProgress func(int64, int64) // 进度回调函数
+}
+
+// Write 实现io.Writer接口
+func (pw *ProgressWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	pw.Downloaded += int64(n)
+
+	// 每下载1%或者至少1MB数据更新一次进度
+	threshold := pw.Total / 100
+	if threshold < 1024*1024 {
+		threshold = 1024 * 1024
 	}
 
+	if pw.Downloaded-pw.LastOutput >= threshold {
+		pw.LastOutput = pw.Downloaded
+		if pw.OnProgress != nil {
+			pw.OnProgress(pw.Downloaded, pw.Total)
+		}
+	}
+
+	return n, nil
+}
+
+// Installer FRP安装器
+type Installer struct {
+	BinDir string // FRP二进制文件存储目录
+	Proxy  string // GitHub代理前缀，为空则不使用代理
+}
+
+// NewInstaller 创建一个新的FRP安装器
+func NewInstaller(binDir string, proxy string) (*Installer, error) {
+	if binDir == "" {
+		return nil, fmt.Errorf("binDir is empty")
+	}
+	if _, err := os.Stat(binDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("binDir is not exist")
+	}
+	if proxy != "" {
+		proxy = "https://ghfast.top"
+	}
+	return &Installer{
+		BinDir: binDir,
+		Proxy:  proxy,
+	}, nil
+}
+
+// GetFRPBinaryPath 根据版本获取FRP二进制文件路径
+func (i *Installer) GetFRPBinaryPath(version string) string {
+	frpcPath := filepath.Join(i.BinDir, fmt.Sprintf("frpc-%s", version))
+	if runtime.GOOS == "windows" {
+		frpcPath += ".exe"
+	}
+	return frpcPath
+}
+
+// EnsureFRPInstalled 确保指定版本的FRP已安装
+func (i *Installer) EnsureFRPInstalled(version string) (string, error) {
 	// 已安装
-	frpPath, err := IsFRPInstalled(binDir, version)
-	if err == nil {
+	frpPath, exists, err := i.IsFRPInstalled(version)
+	if err != nil {
+		return "", err
+	}
+	if exists {
 		return frpPath, nil
 	}
 
 	// 获取系统信息
-	osType, arch, ext := getSystemInfo()
+	osType, arch, ext := i.getSystemInfo()
 	if osType == "" || arch == "" {
 		return "", fmt.Errorf("不支持的操作系统: %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
 	// 下载FRP
 	url := fmt.Sprintf(frpBaseURL, version, version, osType, arch, ext)
-	if err := downloadAndExtract(url, filepath.Join(binDir, version)); err != nil {
+
+	// 使用GitHub代理前缀（如果设置）
+	if i.Proxy != "" {
+		url = strings.Join([]string{i.Proxy, url}, "/")
+	}
+
+	if err := i.downloadAndExtract(url, version); err != nil {
 		return "", fmt.Errorf("下载并解压FRP失败: %v", err)
 	}
 
-	return filepath.Join(binDir, fmt.Sprintf("frpc-%s%s", version, ext)), nil
+	return i.GetFRPBinaryPath(version), nil
 }
 
 // IsFRPInstalled 检查指定版本的FRP是否已安装
-func IsFRPInstalled(binDir, version string) (string, error) {
-	// 检查frpc或frpc.exe是否存在
-	frpcPath := filepath.Join(binDir, version, "frpc")
-	if runtime.GOOS == "windows" {
-		frpcPath += ".exe"
+// 返回值：二进制路径，是否存在，错误信息
+func (i *Installer) IsFRPInstalled(version string) (string, bool, error) {
+	// 获取二进制路径
+	frpcPath := i.GetFRPBinaryPath(version)
+
+	// 检查文件是否存在
+	_, err := os.Stat(frpcPath)
+	if err == nil {
+		return frpcPath, true, nil
 	}
 
-	_, err := os.Stat(frpcPath)
-	return frpcPath, err
+	if os.IsNotExist(err) {
+		return frpcPath, false, nil
+	}
+
+	return frpcPath, false, err
 }
 
 // getSystemInfo 获取系统信息
-func getSystemInfo() (osType, arch, ext string) {
+func (i *Installer) getSystemInfo() (osType, arch, ext string) {
 	osType = runtime.GOOS
 	arch = runtime.GOARCH
 
@@ -87,7 +162,7 @@ func getSystemInfo() (osType, arch, ext string) {
 }
 
 // downloadAndExtract 下载并解压FRP
-func downloadAndExtract(url, targetDir string) error {
+func (i *Installer) downloadAndExtract(url, version string) error {
 	// 创建临时文件
 	tmpFile, err := os.CreateTemp("", "frp-*.tmp")
 	if err != nil {
@@ -96,8 +171,23 @@ func downloadAndExtract(url, targetDir string) error {
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
-	// 下载文件
-	resp, err := http.Get(url)
+	// 创建带超时的HTTP客户端
+	client := &http.Client{
+		Timeout: httpTimeout,
+	}
+
+	// 创建带上下文的请求
+	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	// 发送请求
+	fmt.Printf("正在下载FRP：%s\n", url)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -107,23 +197,42 @@ func downloadAndExtract(url, targetDir string) error {
 		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
 	}
 
+	// 获取文件大小
+	contentLength := resp.ContentLength
+
+	// 创建进度写入器
+	progressWriter := &ProgressWriter{
+		Total: contentLength,
+		OnProgress: func(downloaded, total int64) {
+			percent := float64(downloaded) / float64(total) * 100
+			fmt.Printf("\r下载进度: %.2f%% (%d/%d bytes)", percent, downloaded, total)
+			if downloaded >= total {
+				fmt.Println("\n下载完成！")
+			}
+		},
+	}
+
+	// 使用多写入器同时写入文件和更新进度
+	writer := io.MultiWriter(tmpFile, progressWriter)
+
 	// 保存到临时文件
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+	if _, err := io.Copy(writer, resp.Body); err != nil {
 		return err
 	}
 
+	fmt.Println("正在解压文件...")
 	// 解压文件
 	if strings.HasSuffix(url, ".zip") {
-		return extractZip(tmpFile.Name(), targetDir)
+		return i.extractZip(tmpFile.Name(), version)
 	} else if strings.HasSuffix(url, ".tar.gz") {
-		return extractTarGz(tmpFile.Name(), targetDir)
+		return i.extractTarGz(tmpFile.Name(), version)
 	}
 
 	return fmt.Errorf("不支持的文件格式")
 }
 
 // extractZip 解压zip文件
-func extractZip(zipFile, targetDir string) error {
+func (i *Installer) extractZip(zipFile, version string) error {
 	r, err := zip.OpenReader(zipFile)
 	if err != nil {
 		return err
@@ -141,7 +250,8 @@ func extractZip(zipFile, targetDir string) error {
 		}
 		defer rc.Close()
 
-		path := filepath.Join(targetDir, filepath.Base(f.Name))
+		// 获取保存路径
+		path := i.GetFRPBinaryPath(version)
 		outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 		if err != nil {
 			return err
@@ -158,7 +268,7 @@ func extractZip(zipFile, targetDir string) error {
 }
 
 // extractTarGz 解压tar.gz文件
-func extractTarGz(tarFile, targetDir string) error {
+func (i *Installer) extractTarGz(tarFile, version string) error {
 	f, err := os.Open(tarFile)
 	if err != nil {
 		return err
@@ -185,7 +295,8 @@ func extractTarGz(tarFile, targetDir string) error {
 			continue
 		}
 
-		path := filepath.Join(targetDir, filepath.Base(hdr.Name))
+		// 获取保存路径
+		path := i.GetFRPBinaryPath(version)
 		outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
 		if err != nil {
 			return err

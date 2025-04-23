@@ -203,6 +203,19 @@ func handleUpdateCmd(cfg *fdctl.ControllerConfig) {
 		log.Fatal("请使用 -config 参数指定配置文件路径")
 	}
 
+	// 名称转为clientId
+	var clientId string
+	for _, client := range cfg.Clients {
+		if client.Name == *updateClientName {
+			clientId = client.ClientId
+			break
+		}
+	}
+
+	if clientId == "" {
+		log.Fatalf("未找到名为 %s 的客户端", *updateClientName)
+	}
+
 	// 创建控制器
 	ctrl, err := createController(cfg)
 	if err != nil {
@@ -217,11 +230,11 @@ func handleUpdateCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	// 发送配置
-	if err := ctrl.SendConfig(*updateClientName, config); err != nil {
+	if err := ctrl.SendConfig(clientId, config); err != nil {
 		log.Fatalf("发送配置失败: %v", err)
 	}
 
-	log.Printf("配置已成功发送到客户端: %s", *updateClientName)
+	log.Printf("配置已成功发送到客户端: %s[%s]", *updateClientName, clientId)
 }
 
 // 处理ping子命令

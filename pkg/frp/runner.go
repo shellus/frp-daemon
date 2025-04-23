@@ -41,18 +41,18 @@ func (r *Runner) StartInstance(name, version, frpPath, configPath string) error 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	log.Printf("正在启动实例 %s，版本 %s，FRP路径 %s，配置路径 %s", name, version, frpPath, configPath)
+	log.Printf("正在启动实例，instanceName=%s, version=%s, frpPath=%s, configPath=%s", name, version, frpPath, configPath)
 
 	// 检查实例是否已存在
 	if instance, exists := r.instances[name]; exists {
 		if instance.cmd != nil && instance.cmd.Process != nil {
-			return fmt.Errorf("实例 %s 已在运行", name)
+			return fmt.Errorf("实例已在运行，instanceName=%s", name)
 		}
 	}
 
 	// 检查配置文件是否存在
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return fmt.Errorf("配置文件 %s 不存在", configPath)
+		return fmt.Errorf("配置文件不存在，configPath=%s", configPath)
 	}
 
 	// 启动FRP实例
@@ -61,16 +61,16 @@ func (r *Runner) StartInstance(name, version, frpPath, configPath string) error 
 	// 创建管道用于捕获输出
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("创建标准输出管道失败: %v", err)
+		return fmt.Errorf("创建标准输出管道失败，Error=%v", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("创建标准错误管道失败: %v", err)
+		return fmt.Errorf("创建标准错误管道失败，Error=%v", err)
 	}
 
 	// 启动进程
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("启动FRP实例失败: %v", err)
+		return fmt.Errorf("启动FRP实例失败，Error=%v", err)
 	}
 
 	// 保存实例信息

@@ -26,7 +26,6 @@ func main() {
 	}
 
 	var configFilePath = filepath.Join(baseDir, "client.yaml")
-	var instancesFilePath = filepath.Join(baseDir, "instances.yaml")
 	var frpBinDir = filepath.Join(baseDir, "frpc")
 	var frpcConfigDir = filepath.Join(baseDir, "config")
 
@@ -36,23 +35,17 @@ func main() {
 		log.Fatalf("加载客户端配置失败: %v", err)
 	}
 
-	// 加载实例配置
-	instancesFile, err := config.LoadInstancesFile(instancesFilePath)
-	if err != nil {
-		log.Fatalf("加载实例配置失败: %v", err)
-	}
-
 	// 创建FRP运行器
 	runner := frp.NewRunner()
 
 	// 创建客户端
-	client, err := config.NewClient(cfg.Client, cfg.Mqtt, instancesFile, runner, frpBinDir, frpcConfigDir)
+	client, err := config.NewClient(cfg, runner, frpBinDir, frpcConfigDir)
 	if err != nil {
 		log.Fatalf("创建客户端失败: %v", err)
 	}
 	client.Start()
 
-	log.Printf("客户端 %s[%s] 启动成功, frp实例数：%d", cfg.Client.Name, cfg.Client.ClientId, len(instancesFile.Instances))
+	log.Printf("客户端 %s[%s] 启动成功, frp实例数：%d", cfg.ClientConfig.Client.Name, cfg.ClientConfig.Client.ClientId, len(cfg.ClientConfig.Instances))
 
 	// 设置信号处理
 	sigChan := make(chan os.Signal, 1)

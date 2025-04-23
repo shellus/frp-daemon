@@ -1,43 +1,52 @@
 package fdclient
 
 import (
-	"errors"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/shellus/frp-daemon/pkg/frp"
-	"github.com/shellus/frp-daemon/pkg/installer"
+	installerC "github.com/shellus/frp-daemon/pkg/installer"
 	mqttC "github.com/shellus/frp-daemon/pkg/mqtt"
 	"github.com/shellus/frp-daemon/pkg/types"
 )
 
 type Client struct {
-	auth          types.ClientAuth
-	mqttConfig    types.MQTTClientOpts
-	mqtt          *mqttC.MQTT
-	instancesFile *InstancesFile
-	runner        *frp.Runner
-	binDir        string
-	instancesDir  string
+	configFile   *ConfigFile
+	mqtt         *mqttC.MQTT
+	runner       *frp.Runner
+	binDir       string
+	instancesDir string
+	installer    *installerC.Installer
 }
 
-func NewClient(auth types.ClientAuth, mqttConfig types.MQTTClientOpts, instancesFile *InstancesFile, runner *frp.Runner, binDir, instancesDir string) (*Client, error) {
-	if auth.ClientId == "" {
-		return nil, errors.New("auth.ClientId is empty")
+func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir string) (*Client, error) {
+	if configFile.ClientConfig.Client.ClientId == "" {
+		return nil, fmt.Errorf("配置错误，auth.ClientId is empty")
 	}
-	if mqttConfig.Broker == "" {
-		return nil, errors.New("mqttConfig.Broker is empty")
+	if configFile.ClientConfig.Mqtt.Broker == "" {
+		return nil, fmt.Errorf("配置错误，mqtt.Broker is empty")
+	}
+	if _, err := os.Stat(instancesDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("FRP实例目录不存在，instancesDir=%s", instancesDir)
+	}
+	if _, err := os.Stat(binDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("FRP二进制目录不存在，binDir=%s", binDir)
+	}
+	installer, err := installerC.NewInstaller(binDir, "")
+	if err != nil {
+		return nil, fmt.Errorf("创建安装器失败，Error=%v", err)
 	}
 
 	client := &Client{
-		auth:          auth,
-		mqttConfig:    mqttConfig,
-		instancesFile: instancesFile,
-		runner:        runner,
-		binDir:        binDir,
-		instancesDir:  instancesDir,
+		configFile:   configFile,
+		runner:       runner,
+		binDir:       binDir,
+		instancesDir: instancesDir,
+		installer:    installer,
 	}
 
-	mqtt, err := mqttC.NewMQTT(mqttConfig)
+	mqtt, err := mqttC.NewMQTT(configFile.ClientConfig.Mqtt)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +55,7 @@ func NewClient(auth types.ClientAuth, mqttConfig types.MQTTClientOpts, instances
 	}
 
 	client.mqtt = mqtt
-	client.mqtt.Subscribe(mqttC.MessageTopic(mqttConfig.TopicPrefix, auth.ClientId), byte(mqttConfig.QoS), func(message types.Message) {
+	client.mqtt.Subscribe(mqttC.MessageTopic(configFile.ClientConfig.Mqtt.TopicPrefix, configFile.ClientConfig.Client.ClientId), byte(configFile.ClientConfig.Mqtt.QoS), func(message types.Message) {
 		// 判断消息action
 		switch message.Action {
 		case types.MessageActionPing:
@@ -61,13 +70,15 @@ func NewClient(auth types.ClientAuth, mqttConfig types.MQTTClientOpts, instances
 	return client, nil
 }
 
-func (c *Client) Start() {
-	for _, localInstanceConfig := range c.instancesFile.Instances {
+func (c *Client) Start() (err error) {
+	for _, localInstanceConfig := range c.configFile.ClientConfig.Instances {
 		if err := c.StartFrpInstance(localInstanceConfig); err != nil {
-			log.Fatalf("启动实例 %s 失败: %v", localInstanceConfig.Name, err)
+			log.Fatalf("启动实例失败，InstanceName=%s, Error=%v", localInstanceConfig.Name, err)
+			return err
 		}
-		log.Printf("启动实例 %s 成功，进程ID: %d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
+		log.Printf("启动实例成功，InstanceName=%s, Pid=%d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
 	}
+	return
 }
 
 func (c *Client) Stop() (err error) {
@@ -75,25 +86,13 @@ func (c *Client) Stop() (err error) {
 }
 
 func (c *Client) StartFrpInstance(instance types.InstanceConfigLocal) (err error) {
-	var frpPath string
-	frpPath, err = installer.IsFRPInstalled(c.binDir, instance.Version)
+	frpPath, err := c.installer.EnsureFRPInstalled(instance.Version)
 	if err != nil {
-		log.Printf("FRP版本 %s 未安装，开始安装", instance.Version)
-		frpPath, err = installer.EnsureFRPInstalled(c.binDir, instance.Version)
-		if err != nil {
-			log.Fatalf("安装FRP版本 %s 失败: %v", instance.Version, err)
-		}
-		log.Printf("FRP版本 %s 安装成功", instance.Version)
+		return err
 	}
-	if err := c.runner.StartInstance(instance.Name, instance.Version, frpPath, instance.ConfigPath); err != nil {
-		log.Printf("启动实例 %s 失败: %v", instance.Name, err)
-	}
-	return
+	return c.runner.StartInstance(instance.Name, instance.Version, frpPath, instance.ConfigPath)
 }
 
 func (c *Client) StopFrpInstance(name string) (err error) {
-	if err := c.runner.StopInstance(name); err != nil {
-		log.Printf("停止实例 %s 失败: %v", name, err)
-	}
-	return
+	return c.runner.StopInstance(name)
 }
