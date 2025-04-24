@@ -26,9 +26,12 @@ func main() {
 	if os.Getenv("FRP_DAEMON_BASE_DIR") != "" {
 		baseDir = os.Getenv("FRP_DAEMON_BASE_DIR")
 	} else {
-		homeDir, err := os.UserHomeDir()
+		var homeDir string
+		var err error
+		homeDir, err = os.UserHomeDir()
 		if err != nil {
-			logger.Fatal().Msgf("获取用户家目录失败，error=%v", err)
+			logger.Warn().Msgf("获取用户家目录失败，使用/root作为默认目录，error=%v", err)
+			homeDir = "/root"
 		}
 		baseDir = filepath.Join(homeDir, ".frp-daemon")
 	}

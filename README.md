@@ -33,7 +33,7 @@ make build && make install
 
 # 创建systemd服务
 echo "[Unit]
-Description=frp守护进程
+Description=fdclient
 After=network.target
 
 [Service]
@@ -43,7 +43,7 @@ Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-" >> /lib/systemd/system/fdclient.service
+" > /lib/systemd/system/fdclient.service
 
 # 重新加载systemd配置
 systemctl daemon-reload
