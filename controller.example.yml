@@ -1,0 +1,25 @@
+# emqx api信息，需要自己从网站上手动获取
+emqx_api:
+    api_endpoint: http://emqx.domain.com:18083
+    api_app_key: <myemqx-api-app-key>
+    api_secret_key: <myemqx-api-secret-key>
+    mqtt_broker: tcp://emqx.domain.com:1883
+# 控制端client信息，使用fdctl new命令创建一套配置，然后手动添加到此处
+client:
+    name: <fdctl new命令生成>
+    client_id: <fdctl new命令生成>
+    password: <fdctl new命令生成>
+mqtt:
+    broker: <fdctl new命令生成>
+    client_id: <fdctl new命令生成>
+    username: <fdctl new命令生成>
+    password: <fdctl new命令生成>
+    topic_prefix: <fdctl new命令生成>
+    qos: <fdctl new命令生成>
+    retain: <fdctl new命令生成>
+    clean_session: <fdctl new命令生成>
+# 被控端client数组，使用fdctl new命令增加被控端client后，new命令会自动更新这个数组
+clients:
+    - name: <使用fdctl new命令后自动创建>
+      client_id: <使用fdctl new命令后自动创建>
+      password: <使用fdctl new命令后自动创建>

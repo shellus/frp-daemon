@@ -59,6 +59,7 @@ type Status struct {
 
 // InstanceStatus FRP实例状态
 type InstanceStatus struct {
+	Name       string   `json:"name"`        // 实例名称
 	Running    bool     `json:"running"`     // 是否运行中
 	LastLog    []string `json:"last_log"`    // 最后100行日志
 	ExitStatus int      `json:"exit_status"` // 退出状态
@@ -78,8 +79,22 @@ const (
 	MessageActionPing string = "ping"
 	// MessageActionUpdate 对应的Payload是InstanceConfigRemote
 	MessageActionUpdate string = "update"
+	// MessageActionDelete 对应的Payload是DeleteInstanceMessage
+	MessageActionDelete string = "delete"
+	// MessageActionGetStatus 对应的Payload是GetStatusMessage
+	MessageActionGetStatus string = "get_status"
 )
 
 type PingMessage struct {
 	Time int64 `json:"time"` // 时间戳，毫秒
+}
+
+// DeleteInstanceMessage 删除实例消息
+type DeleteInstanceMessage struct {
+	InstanceName string `json:"instance_name"` // 实例名称
+}
+
+// GetStatusMessage 获取状态消息
+type GetStatusMessage struct {
+	InstanceName string `json:"instance_name"` // 实例名称
 }

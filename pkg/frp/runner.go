@@ -194,8 +194,10 @@ func (r *Runner) GetStatus() []types.InstanceStatus {
 	defer r.mu.RUnlock()
 
 	var status []types.InstanceStatus
-	for _, instance := range r.instances {
-		status = append(status, instance.status)
+	for name, instance := range r.instances {
+		instanceStatus := instance.status
+		instanceStatus.Name = name
+		status = append(status, instanceStatus)
 	}
 	return status
 }

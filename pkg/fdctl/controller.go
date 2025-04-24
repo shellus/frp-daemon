@@ -15,7 +15,7 @@ import (
 
 type Controller struct {
 	auth       types.ClientAuth
-	mqttClient *mqtt.MQTT
+	MqttClient *mqtt.MQTT
 	mqttOpts   types.MQTTClientOpts
 	logger     zerolog.Logger
 }
@@ -44,7 +44,7 @@ func (c *Controller) ConnectMQTT() error {
 		return fmt.Errorf("mqtt connect failed: %v", err)
 	}
 
-	c.mqttClient = mqttClient
+	c.MqttClient = mqttClient
 	return nil
 }
 
@@ -74,7 +74,7 @@ func (c *Controller) SendConfig(clientId string, clientPassword string, config t
 		return err
 	}
 	// 异步行为调用
-	err = c.mqttClient.RsyncAction(task.MessagePending{
+	err = c.MqttClient.RsyncAction(task.MessagePending{
 		MessageId:        types.GenerateRandomString(16),
 		SenderClientId:   c.auth.ClientId,
 		ReceiverClientId: clientId,
@@ -103,7 +103,7 @@ func (c *Controller) SendPing(clientId string) error {
 	}
 
 	// 同步行为调用
-	waiter, err := c.mqttClient.SyncAction(task.MessagePending{
+	waiter, err := c.MqttClient.SyncAction(task.MessagePending{
 		MessageId:        types.GenerateRandomString(16),
 		SenderClientId:   c.auth.ClientId,
 		ReceiverClientId: clientId,
@@ -138,8 +138,45 @@ func (c *Controller) ListInstances(clientId string) ([]types.InstanceConfigLocal
 
 // 删除客户端实例
 func (c *Controller) DeleteInstance(clientId string, instanceName string) error {
+	if clientId == "" {
+		return errors.New("clientId is empty")
+	}
+	if instanceName == "" {
+		return errors.New("instanceName is empty")
+	}
 
-	return errors.New("not implemented")
+	// 创建删除实例的消息
+	deleteMessage := types.DeleteInstanceMessage{
+		InstanceName: instanceName,
+	}
+	deleteMessageJSON, err := json.Marshal(deleteMessage)
+	if err != nil {
+		return fmt.Errorf("marshal delete message failed: %v", err)
+	}
+
+	// 同步行为调用
+	waiter, err := c.MqttClient.SyncAction(task.MessagePending{
+		MessageId:        types.GenerateRandomString(16),
+		SenderClientId:   c.auth.ClientId,
+		ReceiverClientId: clientId,
+		Action:           types.MessageActionDelete,
+		Payload:          json.RawMessage(deleteMessageJSON),
+		Expiration:       time.Now().Add(10 * time.Second).Unix(),
+	})
+	if err != nil {
+		return fmt.Errorf("publish failed: %v", err)
+	}
+
+	remoteResult, err := waiter.Wait()
+	if err != nil {
+		return fmt.Errorf("删除实例远端执行失败，err=%v", err)
+	}
+	if remoteResult == nil {
+		return errors.New("删除实例远端执行失败，value为空")
+	}
+
+	c.logger.Info().Msgf("删除实例成功，clientId=%s, instanceName=%s", clientId, instanceName)
+	return nil
 }
 
 // 查看指定实例的lastLog
@@ -149,9 +186,51 @@ func (c *Controller) GetLastLog(clientId string, instanceName string) ([]string,
 }
 
 // 查看指定实例的status
-func (c *Controller) GetStatus(clientId string, instanceName string) ([]types.InstanceStatus, error) {
+func (c *Controller) GetStatus(clientId string, instanceName string) (*types.InstanceStatus, error) {
+	if clientId == "" {
+		return nil, errors.New("clientId is empty")
+	}
+	if instanceName == "" {
+		return nil, errors.New("instanceName is empty")
+	}
 
-	return nil, errors.New("not implemented")
+	// 创建获取状态的消息
+	statusMessage := types.GetStatusMessage{
+		InstanceName: instanceName,
+	}
+	statusMessageJSON, err := json.Marshal(statusMessage)
+	if err != nil {
+		return nil, fmt.Errorf("marshal status message failed: %v", err)
+	}
+
+	// 同步行为调用
+	waiter, err := c.MqttClient.SyncAction(task.MessagePending{
+		MessageId:        types.GenerateRandomString(16),
+		SenderClientId:   c.auth.ClientId,
+		ReceiverClientId: clientId,
+		Action:           types.MessageActionGetStatus,
+		Payload:          json.RawMessage(statusMessageJSON),
+		Expiration:       time.Now().Add(10 * time.Second).Unix(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("publish failed: %v", err)
+	}
+
+	remoteResult, err := waiter.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("获取状态远端执行失败，err=%v", err)
+	}
+	if remoteResult == nil {
+		return nil, errors.New("获取状态远端执行失败，value为空")
+	}
+
+	// 解析状态
+	var status types.InstanceStatus
+	if err := json.Unmarshal(remoteResult, &status); err != nil {
+		return nil, fmt.Errorf("解析状态失败，err=%v", err)
+	}
+
+	return &status, nil
 }
 
 //

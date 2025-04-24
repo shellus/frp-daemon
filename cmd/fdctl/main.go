@@ -64,6 +64,8 @@ func main() {
 		handleUpdateCmd(cfg)
 	case "ping":
 		handlePingCmd(cfg)
+	case "status":
+		handleStatusCmd(cfg)
 	default:
 		logger.Fatal().Msgf("未知命令: %s", os.Args[1])
 	}
@@ -122,7 +124,8 @@ func handleNewCmd(cfg *fdctl.ControllerConfig) {
 func handleDeleteCmd(cfg *fdctl.ControllerConfig) {
 	// 创建delete子命令
 	deleteCmd := flag.NewFlagSet("delete", flag.ExitOnError)
-	deleteClientName := deleteCmd.String("name", "", "要删除的客户端名称")
+	deleteClientName := deleteCmd.String("name", "", "客户端名称")
+	deleteInstanceName := deleteCmd.String("instance", "", "要删除的实例名称")
 
 	// 解析delete子命令参数
 	if err := deleteCmd.Parse(os.Args[2:]); err != nil {
@@ -131,42 +134,38 @@ func handleDeleteCmd(cfg *fdctl.ControllerConfig) {
 
 	// 检查必需参数
 	if *deleteClientName == "" {
-		logger.Fatal().Msg("请使用 -name 参数指定要删除的客户端名称")
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
+	}
+	if *deleteInstanceName == "" {
+		logger.Fatal().Msg("请使用 -instance 参数指定要删除的实例名称")
 	}
 
 	// 查找要删除的客户端
-	var clientIndex = -1
 	var clientToDelete *types.ClientAuth
-	for i, client := range cfg.Clients {
+	for _, client := range cfg.Clients {
 		if client.Name == *deleteClientName {
-			clientIndex = i
 			clientToDelete = &client
 			break
 		}
 	}
 
-	if clientIndex == -1 {
+	if clientToDelete == nil {
 		logger.Fatal().Msgf("未找到名为 %s 的客户端", *deleteClientName)
 	}
 
-	// 创建EMQX API客户端
-	api := emqx.NewAPI(cfg.EMQXAPI)
+	// 创建控制器
+	ctrl, err := createController(cfg)
+	if err != nil {
+		logger.Fatal().Msgf("创建控制器失败: %v", err)
+	}
+	defer ctrl.MqttClient.Disconnect()
 
-	// 删除MQTT用户
-	if err := api.DeleteUser(clientToDelete); err != nil {
-		logger.Fatal().Msgf("删除MQTT用户失败: %v", err)
-		return
+	// 删除实例
+	if err := ctrl.DeleteInstance(clientToDelete.ClientId, *deleteInstanceName); err != nil {
+		logger.Fatal().Msgf("删除实例失败: %v", err)
 	}
 
-	// 从配置中删除客户端
-	cfg.Clients = append(cfg.Clients[:clientIndex], cfg.Clients[clientIndex+1:]...)
-
-	// 保存更新后的配置
-	if err := fdctl.WriteControllerConfig(*cfg, configFilePath); err != nil {
-		logger.Fatal().Msgf("写入控制器配置失败: %v", err)
-	}
-
-	logger.Info().Msgf("成功删除客户端: %s", *deleteClientName)
+	logger.Info().Msgf("成功删除实例: %s", *deleteInstanceName)
 }
 
 // createController 创建并连接控制器
@@ -289,6 +288,56 @@ func handlePingCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	logger.Info().Msgf("已向客户端 %s[%s] 发送ping消息", *pingClientName, targetClient.ClientId)
+}
+
+// 处理status子命令
+func handleStatusCmd(cfg *fdctl.ControllerConfig) {
+	// 创建status子命令
+	statusCmd := flag.NewFlagSet("status", flag.ExitOnError)
+	statusClientName := statusCmd.String("name", "", "客户端名称")
+	statusInstanceName := statusCmd.String("instance", "", "实例名称")
+
+	// 解析status子命令参数
+	if err := statusCmd.Parse(os.Args[2:]); err != nil {
+		logger.Fatal().Msgf("解析参数失败: %v", err)
+	}
+
+	// 检查必需参数
+	if *statusClientName == "" {
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
+	}
+	if *statusInstanceName == "" {
+		logger.Fatal().Msg("请使用 -instance 参数指定实例名称")
+	}
+
+	// 查找客户端
+	var clientToQuery *types.ClientAuth
+	for _, client := range cfg.Clients {
+		if client.Name == *statusClientName {
+			clientToQuery = &client
+			break
+		}
+	}
+
+	if clientToQuery == nil {
+		logger.Fatal().Msgf("未找到名为 %s 的客户端", *statusClientName)
+	}
+
+	// 创建控制器
+	ctrl, err := createController(cfg)
+	if err != nil {
+		logger.Fatal().Msgf("创建控制器失败: %v", err)
+	}
+	defer ctrl.MqttClient.Disconnect()
+
+	// 获取状态
+	status, err := ctrl.GetStatus(clientToQuery.ClientId, *statusInstanceName)
+	if err != nil {
+		logger.Fatal().Msgf("获取状态失败: %v", err)
+	}
+
+	// 打印状态
+	logger.Info().Msgf("实例状态: %+v", status)
 }
 
 func runController() {
