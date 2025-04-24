@@ -247,6 +247,18 @@ func (m *MQTT) action(action task.MessagePending) error {
 
 	return nil
 }
+func (m *MQTT) Report(selfClientId string, status types.Status) error {
+	statusJSON, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	err = m.publish(task.TopicStatus(m.topicPrefix, selfClientId), statusJSON, m.qos, true)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 func (m *MQTT) publish(topic string, payload []byte, qos byte, retain bool) error {
 	token := m.paho.Publish(topic, qos, retain, payload)
 	if token.Wait() && token.Error() != nil {

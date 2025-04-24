@@ -81,9 +81,10 @@ func (r *Runner) StartInstance(name, version, frpPath, configPath string) error 
 		ConfigPath: configPath,
 		cmd:        cmd,
 		status: types.InstanceStatus{
-			Running: true,
-			Pid:     cmd.Process.Pid,
-			LastLog: make([]string, 0, 100),
+			Running:   true,
+			StartTime: time.Now().Unix(),
+			Pid:       cmd.Process.Pid,
+			LastLog:   make([]string, 0, 100),
 		},
 		logs: make([]string, 0, 100),
 	}
@@ -159,6 +160,7 @@ func (r *Runner) StopInstance(name string) error {
 
 	// 标记实例为已停止
 	instance.status.Running = false
+	instance.status.ExitTime = time.Now().Unix()
 	r.mu.Unlock()
 
 	// 停止进程
@@ -221,6 +223,7 @@ func (r *Runner) monitorInstance(name string) {
 	// 再次检查实例是否存在，因为可能在等待过程中被删除
 	if instance, exists := r.instances[name]; exists {
 		instance.status.Running = false
+		instance.status.ExitTime = time.Now().Unix()
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				instance.status.ExitStatus = exitErr.ExitCode()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/shellus/frp-daemon/pkg/frp"
@@ -77,6 +78,20 @@ func (c *Client) Start() (err error) {
 		}
 		c.logger.Info().Msgf("启动实例成功，InstanceName=%s, Pid=%d", localInstanceConfig.Name, c.runner.GetInstancePid(localInstanceConfig.Name))
 	}
+	return
+}
+
+// ReportStatus 上报状态，应该被每分钟调用一次
+func (c *Client) ReportStatus() (err error) {
+	instancesStatus := c.runner.GetStatus()
+	status := types.Status{
+		ID:             c.configFile.ClientConfig.Client.ClientId,
+		LastOnlineTime: time.Now().Unix(),
+		Instances:      instancesStatus,
+	}
+
+	c.mqtt.Report(c.configFile.ClientConfig.Client.ClientId, status)
+
 	return
 }
 

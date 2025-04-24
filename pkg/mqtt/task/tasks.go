@@ -68,3 +68,7 @@ func TopicComplete(prefix string, username string) string {
 func TopicFailed(prefix string, username string) string {
 	return fmt.Sprintf("%s/%s/%s", prefix, username, "failed")
 }
+
+func TopicStatus(prefix string, username string) string {
+	return fmt.Sprintf("%s/%s/%s", prefix, username, "status")
+}

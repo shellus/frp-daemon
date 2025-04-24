@@ -61,6 +61,22 @@ func main() {
 
 	logger.Info().Msgf("客户端启动成功，%s[%s]，frp实例数=%d", cfg.ClientConfig.Client.Name, cfg.ClientConfig.Client.ClientId, len(cfg.ClientConfig.Instances))
 
+	// 启动状态报告定时器
+	statusTicker := time.NewTicker(time.Minute)
+	go func() {
+		// 立即上报一次状态
+		if err := client.ReportStatus(); err != nil {
+			logger.Error().Msgf("首次上报状态失败，error=%v", err)
+		}
+
+		// 然后开始定时上报
+		for range statusTicker.C {
+			if err := client.ReportStatus(); err != nil {
+				logger.Error().Msgf("上报状态失败，error=%v", err)
+			}
+		}
+	}()
+
 	// 设置信号处理
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -68,6 +84,9 @@ func main() {
 	// 等待信号
 	<-sigChan
 	logger.Info().Msg("收到关闭信号，开始优雅关闭...")
+
+	// 关闭状态报告定时器
+	statusTicker.Stop()
 
 	// 优雅关闭所有实例
 	if err := client.Stop(); err != nil {
