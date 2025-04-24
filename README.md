@@ -22,7 +22,7 @@
 - [✓] `fdctl delete -name <clientName> -instance <instanceName>`用于删除指定实例
 - [✓] `fdctl status -name <clientName> -instance <instanceName>`用于查看指定实例的状态
 - [✓] 使用systemd管理fdclient进程
-
+- [✓] 添加wol命令
 
 ## 安装
 ```

@@ -3,6 +3,7 @@ package fdclient
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -58,6 +59,7 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 	mqtt.SubscribeAction(types.MessageActionPing, c.HandlePing)
 	mqtt.SubscribeAction(types.MessageActionDelete, c.HandleDelete)
 	mqtt.SubscribeAction(types.MessageActionGetStatus, c.HandleGetStatus)
+	mqtt.SubscribeAction(types.MessageActionWOL, c.HandleWOL)
 
 	if err := mqtt.Connect(); err != nil {
 		return nil, fmt.Errorf("连接MQTT失败，Error=%v", err)
@@ -154,4 +156,60 @@ func (c *Client) HandleGetStatus(action string, payload []byte) (value []byte, e
 	}
 
 	return statusJSON, nil
+}
+
+// HandleWOL 处理WOL消息
+func (c *Client) HandleWOL(action string, payload []byte) (value []byte, err error) {
+	var wolMessage types.WOLMessage
+	if err = json.Unmarshal(payload, &wolMessage); err != nil {
+		return nil, fmt.Errorf("处理wol指令解析失败，Error=%v", err)
+	}
+	c.logger.Info().Msgf("处理wol指令，macAddress=%s", wolMessage.MacAddress)
+
+	// 发送WOL包
+	if err = c.sendWOLPacket(wolMessage.MacAddress); err != nil {
+		return nil, fmt.Errorf("发送WOL包失败，Error=%v", err)
+	}
+
+	respByte, err := json.Marshal("WOL包发送成功")
+	if err != nil {
+		return nil, fmt.Errorf("序列化响应失败，Error=%v", err)
+	}
+	return respByte, nil
+}
+
+// sendWOLPacket 发送WOL包
+func (c *Client) sendWOLPacket(macAddress string) error {
+	// 解析MAC地址
+	mac, err := net.ParseMAC(macAddress)
+	if err != nil {
+		return fmt.Errorf("解析MAC地址失败，Error=%v", err)
+	}
+
+	// 创建WOL包
+	packet := make([]byte, 102)
+	for i := 0; i < 6; i++ {
+		packet[i] = 0xFF
+	}
+	for i := 6; i < 102; i += 6 {
+		copy(packet[i:], mac)
+	}
+
+	// 发送WOL包
+	addr := &net.UDPAddr{
+		IP:   net.IPv4bcast,
+		Port: 9,
+	}
+	conn, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return fmt.Errorf("创建UDP连接失败，Error=%v", err)
+	}
+	defer conn.Close()
+
+	_, err = conn.Write(packet)
+	if err != nil {
+		return fmt.Errorf("发送WOL包失败，Error=%v", err)
+	}
+
+	return nil
 }

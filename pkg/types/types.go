@@ -83,6 +83,8 @@ const (
 	MessageActionDelete string = "delete"
 	// MessageActionGetStatus 对应的Payload是GetStatusMessage
 	MessageActionGetStatus string = "get_status"
+	// MessageActionWOL 对应的Payload是WOLMessage
+	MessageActionWOL string = "wol"
 )
 
 type PingMessage struct {
@@ -97,4 +99,9 @@ type DeleteInstanceMessage struct {
 // GetStatusMessage 获取状态消息
 type GetStatusMessage struct {
 	InstanceName string `json:"instance_name"` // 实例名称
+}
+
+// WOLMessage 唤醒消息
+type WOLMessage struct {
+	MacAddress string `json:"mac_address"`
 }

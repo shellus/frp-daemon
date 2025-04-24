@@ -66,6 +66,8 @@ func main() {
 		handlePingCmd(cfg)
 	case "status":
 		handleStatusCmd(cfg)
+	case "wol":
+		handleWOLCmd(cfg)
 	default:
 		logger.Fatal().Msgf("未知命令: %s", os.Args[1])
 	}
@@ -338,6 +340,54 @@ func handleStatusCmd(cfg *fdctl.ControllerConfig) {
 
 	// 打印状态
 	logger.Info().Msgf("实例状态: %+v", status)
+}
+
+// 处理wol子命令
+func handleWOLCmd(cfg *fdctl.ControllerConfig) {
+	// 创建wol子命令
+	wolCmd := flag.NewFlagSet("wol", flag.ExitOnError)
+	wolClientName := wolCmd.String("name", "", "客户端名称")
+	macAddress := wolCmd.String("mac", "", "目标设备的MAC地址")
+
+	// 解析wol子命令参数
+	if err := wolCmd.Parse(os.Args[2:]); err != nil {
+		logger.Fatal().Msgf("解析参数失败: %v", err)
+	}
+
+	// 检查必需参数
+	if *wolClientName == "" {
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
+	}
+	if *macAddress == "" {
+		logger.Fatal().Msg("请使用 -mac 参数指定目标设备的MAC地址")
+	}
+
+	// 查找客户端
+	var clientToWake *types.ClientAuth
+	for _, client := range cfg.Clients {
+		if client.Name == *wolClientName {
+			clientToWake = &client
+			break
+		}
+	}
+
+	if clientToWake == nil {
+		logger.Fatal().Msgf("未找到名为 %s 的客户端", *wolClientName)
+	}
+
+	// 创建控制器
+	ctrl, err := createController(cfg)
+	if err != nil {
+		logger.Fatal().Msgf("创建控制器失败: %v", err)
+	}
+	defer ctrl.MqttClient.Disconnect()
+
+	// 发送WOL命令
+	if err := ctrl.SendWOL(clientToWake.ClientId, *macAddress); err != nil {
+		logger.Fatal().Msgf("发送WOL命令失败: %v", err)
+	}
+
+	logger.Info().Msgf("已向客户端 %s[%s] 发送WOL命令，目标MAC地址: %s", *wolClientName, clientToWake.ClientId, *macAddress)
 }
 
 func runController() {

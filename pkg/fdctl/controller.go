@@ -233,4 +233,47 @@ func (c *Controller) GetStatus(clientId string, instanceName string) (*types.Ins
 	return &status, nil
 }
 
+// SendWOL 发送WOL命令到指定客户端
+func (c *Controller) SendWOL(clientId string, macAddress string) error {
+	if clientId == "" {
+		return errors.New("clientId is empty")
+	}
+	if macAddress == "" {
+		return errors.New("macAddress is empty")
+	}
+
+	// 创建WOL消息
+	wolMessage := types.WOLMessage{
+		MacAddress: macAddress,
+	}
+	wolMessageJSON, err := json.Marshal(wolMessage)
+	if err != nil {
+		return fmt.Errorf("marshal wol message failed: %v", err)
+	}
+
+	// 同步行为调用
+	waiter, err := c.MqttClient.SyncAction(task.MessagePending{
+		MessageId:        types.GenerateRandomString(16),
+		SenderClientId:   c.auth.ClientId,
+		ReceiverClientId: clientId,
+		Action:           types.MessageActionWOL,
+		Payload:          json.RawMessage(wolMessageJSON),
+		Expiration:       time.Now().Add(10 * time.Second).Unix(),
+	})
+	if err != nil {
+		return fmt.Errorf("publish failed: %v", err)
+	}
+
+	remoteResult, err := waiter.Wait()
+	if err != nil {
+		return fmt.Errorf("发送WOL命令远端执行失败，err=%v", err)
+	}
+	if remoteResult == nil {
+		return errors.New("发送WOL命令远端执行失败，value为空")
+	}
+
+	c.logger.Info().Msgf("发送WOL命令成功，clientId=%s, macAddress=%s", clientId, macAddress)
+	return nil
+}
+
 //
