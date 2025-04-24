@@ -38,7 +38,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/local/fdclient
+ExecStart=/usr/local/bin/fdclient
 Restart=on-failure
 
 [Install]
