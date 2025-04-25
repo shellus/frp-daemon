@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -61,6 +62,7 @@ func NewClient(configFile *ConfigFile, runner *frp.Runner, binDir, instancesDir 
 	mqtt.SubscribeAction(types.MessageActionDelete, c.HandleDelete)
 	mqtt.SubscribeAction(types.MessageActionGetStatus, c.HandleGetStatus)
 	mqtt.SubscribeAction(types.MessageActionWOL, c.HandleWOL)
+	mqtt.SubscribeAction(types.MessageActionShutdownWindows, c.HandleShutdownWindows)
 
 	if err := mqtt.Connect(); err != nil {
 		return nil, fmt.Errorf("连接MQTT失败，Error=%v", err)
@@ -226,5 +228,36 @@ func (c *Client) sendWOLPacket(macAddress string) error {
 		return fmt.Errorf("发送WOL包失败，Error=%v", err)
 	}
 
+	return nil
+}
+
+// HandleShutdownWindows 处理Windows远程关机消息
+func (c *Client) HandleShutdownWindows(action string, payload []byte) (value []byte, err error) {
+	var shutdownMessage types.ShutdownWindowsMessage
+	if err = json.Unmarshal(payload, &shutdownMessage); err != nil {
+		return nil, fmt.Errorf("处理shutdown_windows指令解析失败，Error=%v", err)
+	}
+	c.logger.Info().Msgf("处理shutdown_windows指令，ip=%s, username=%s", shutdownMessage.IP, shutdownMessage.Username)
+
+	// 执行Windows远程关机
+	if err = c.shutdownWindows(shutdownMessage.IP, shutdownMessage.Username, shutdownMessage.Password); err != nil {
+		return nil, fmt.Errorf("执行Windows远程关机失败，Error=%v", err)
+	}
+
+	respByte, err := json.Marshal("Windows远程关机成功")
+	if err != nil {
+		return nil, fmt.Errorf("序列化响应失败，Error=%v", err)
+	}
+	return respByte, nil
+}
+
+// shutdownWindows 执行Windows远程关机
+func (c *Client) shutdownWindows(ip, username, password string) error {
+	// 使用net rpc命令执行远程关机
+	cmd := exec.Command("net", "rpc", "shutdown", "-I", ip, "-U", username+"%"+password)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("执行net rpc命令失败: %v, output: %s", err, string(output))
+	}
 	return nil
 }

@@ -15,8 +15,6 @@ func GenerateRandomString(length int) string {
 	return hex.EncodeToString(bytes)
 }
 
-
-
 const (
 	// MessageActionPing 对应的Payload是PingMessage
 	MessageActionPing string = "ping"
@@ -28,4 +26,6 @@ const (
 	MessageActionGetStatus string = "get_status"
 	// MessageActionWOL 对应的Payload是WOLMessage
 	MessageActionWOL string = "wol"
+	// MessageActionShutdownWindows 对应的Payload是ShutdownWindowsMessage
+	MessageActionShutdownWindows string = "shutdown_windows"
 )

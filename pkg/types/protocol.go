@@ -47,3 +47,10 @@ type GetStatusMessage struct {
 type WOLMessage struct {
 	MacAddress string `json:"mac_address"`
 }
+
+// ShutdownWindowsMessage Windows远程关机消息，仅控制端向被控端下发
+type ShutdownWindowsMessage struct {
+	IP       string `json:"ip"`       // Windows机器IP
+	Username string `json:"username"` // Windows用户名
+	Password string `json:"password"` // Windows密码
+}

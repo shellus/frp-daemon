@@ -38,6 +38,7 @@ After=network.target
 
 [Service]
 Type=simple
+Environment=FRP_DAEMON_BASE_DIR=%h/.frp-daemon
 ExecStart=/usr/local/bin/fdclient
 Restart=on-failure
 
@@ -51,10 +52,10 @@ systemctl daemon-reload
 ```
 
 ## 开始
-1. 在主控机器，参考项目根目录下的`controller.example.yml`，获得emqx的`api_app_key`和`api_secret_key`等信息，写入`~/.frp-daemon/controller.yml`
-2. 在主控机器，运行`fdctl new -name fdctl`，创建一组mqtt和client信息，写入controller.yml，因为控制端也是一个标准的client。
+1. 在主控机器，参考项目根目录下的`controller.example.yaml`，获得emqx的`api_app_key`和`api_secret_key`等信息，写入`~/.frp-daemon/controller.yaml`
+2. 在主控机器，运行`fdctl new -name fdctl`，创建一组mqtt和client信息，写入controller.yaml，因为控制端也是一个标准的client。
 3. 在主控机器，运行`fdctl new -name myclient`，创建一个被控端client，
-4. 在被控端机器，将上一步得到的client.yml写入`~/.frp-daemon/client.yml`。
+4. 在被控端机器，创建目录`mkdir -p ~/.frp-daemon/config ~/.frp-daemon/frpc`，将上一步得到的client.yaml写入`~/.frp-daemon/client.yaml`。
 5. 在被控端机器，设置开机启动并启动服务 `systemctl enable fdclient && systemctl start fdclient`
 6. 在主控机器，运行`fdctl update -name fdctl -instance frp -version 0.51.2 -config /tmp/frpc.ini`，下发frp配置。
 7. 在主控机器，运行`fdctl ping -name myclient`，测试客户端是否在线。
@@ -90,6 +91,7 @@ systemctl daemon-reload
 - [✓] 使用systemd管理fdclient进程
 - [✓] 添加wol命令
 - [✓] 添加保留消息用于上报客户端最新状态
+- [ ] `fdctl shutdown-windows -name <clientName> -ip <windowsIP> -username <windowsUsername> -password <windowsPassword>`Windows远程关机命令，参阅[Windows远程关机设置向导](./windows-remote-shutdown.md)
 
 ## 引用
 - [emqx](https://www.emqx.com/)

@@ -276,4 +276,55 @@ func (c *Controller) SendWOL(clientId string, macAddress string) error {
 	return nil
 }
 
+// SendShutdownWindows 发送Windows远程关机消息到指定客户端
+func (c *Controller) SendShutdownWindows(clientId string, ip, username, password string) error {
+	if clientId == "" {
+		return errors.New("clientId is empty")
+	}
+	if ip == "" {
+		return errors.New("ip is empty")
+	}
+	if username == "" {
+		return errors.New("username is empty")
+	}
+	if password == "" {
+		return errors.New("password is empty")
+	}
+
+	// 创建Windows远程关机消息
+	shutdownMessage := types.ShutdownWindowsMessage{
+		IP:       ip,
+		Username: username,
+		Password: password,
+	}
+	shutdownMessageJSON, err := json.Marshal(shutdownMessage)
+	if err != nil {
+		return fmt.Errorf("marshal shutdown message failed: %v", err)
+	}
+
+	// 同步行为调用
+	waiter, err := c.MqttClient.SyncAction(task.MessagePending{
+		MessageId:        types.GenerateRandomString(16),
+		SenderClientId:   c.auth.ClientId,
+		ReceiverClientId: clientId,
+		Action:           types.MessageActionShutdownWindows,
+		Payload:          json.RawMessage(shutdownMessageJSON),
+		Expiration:       time.Now().Add(10 * time.Second).Unix(),
+	})
+	if err != nil {
+		return fmt.Errorf("publish failed: %v", err)
+	}
+
+	remoteResult, err := waiter.Wait()
+	if err != nil {
+		return fmt.Errorf("Windows远程关机远端执行失败，err=%v", err)
+	}
+	if remoteResult == nil {
+		return errors.New("Windows远程关机远端执行失败，value为空")
+	}
+
+	c.logger.Info().Msgf("Windows远程关机成功，clientId=%s, ip=%s", clientId, ip)
+	return nil
+}
+
 //

@@ -68,6 +68,8 @@ func main() {
 		handleStatusCmd(cfg)
 	case "wol":
 		handleWOLCmd(cfg)
+	case "shutdown-windows":
+		handleShutdownWindowsCmd(cfg)
 	default:
 		logger.Fatal().Msgf("未知命令: %s", os.Args[1])
 	}
@@ -388,6 +390,62 @@ func handleWOLCmd(cfg *fdctl.ControllerConfig) {
 	}
 
 	logger.Info().Msgf("已向客户端 %s[%s] 发送WOL命令，目标MAC地址: %s", *wolClientName, clientToWake.ClientId, *macAddress)
+}
+
+// handleShutdownWindowsCmd 处理Windows远程关机命令
+func handleShutdownWindowsCmd(cfg *fdctl.ControllerConfig) {
+	// 创建shutdown-windows子命令
+	shutdownWindowsCmd := flag.NewFlagSet("shutdown-windows", flag.ExitOnError)
+	clientName := shutdownWindowsCmd.String("name", "", "客户端名称")
+	ip := shutdownWindowsCmd.String("ip", "", "Windows机器IP")
+	username := shutdownWindowsCmd.String("username", "", "Windows用户名")
+	password := shutdownWindowsCmd.String("password", "", "Windows密码")
+
+	// 解析shutdown-windows子命令参数
+	if err := shutdownWindowsCmd.Parse(os.Args[2:]); err != nil {
+		logger.Fatal().Msgf("解析参数失败: %v", err)
+	}
+
+	// 检查必需参数
+	if *clientName == "" {
+		logger.Fatal().Msg("请使用 -name 参数指定客户端名称")
+	}
+	if *ip == "" {
+		logger.Fatal().Msg("请使用 -ip 参数指定Windows机器IP")
+	}
+	if *username == "" {
+		logger.Fatal().Msg("请使用 -username 参数指定Windows用户名")
+	}
+	if *password == "" {
+		logger.Fatal().Msg("请使用 -password 参数指定Windows密码")
+	}
+
+	// 查找要操作的客户端
+	var clientToShutdown *types.ClientAuth
+	for _, client := range cfg.Clients {
+		if client.Name == *clientName {
+			clientToShutdown = &client
+			break
+		}
+	}
+
+	if clientToShutdown == nil {
+		logger.Fatal().Msgf("未找到名为 %s 的客户端", *clientName)
+	}
+
+	// 创建控制器
+	ctrl, err := createController(cfg)
+	if err != nil {
+		logger.Fatal().Msgf("创建控制器失败: %v", err)
+	}
+	defer ctrl.MqttClient.Disconnect()
+
+	// 发送Windows远程关机消息
+	if err := ctrl.SendShutdownWindows(clientToShutdown.ClientId, *ip, *username, *password); err != nil {
+		logger.Fatal().Msgf("发送Windows远程关机消息失败: %v", err)
+	}
+
+	logger.Info().Msgf("Windows远程关机消息发送成功，clientName=%s, ip=%s", *clientName, *ip)
 }
 
 func runController() {
