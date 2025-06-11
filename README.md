@@ -7,7 +7,7 @@ graph TD
     C[MQTT代理]
     A[fdctl<br/>控制端]
     B[fdclient<br/>被控端]
-    A -->|"下发配置"| C
+    A -->|"下发指令"| C
     C --> A
     C --> B
     

@@ -1,4 +1,16 @@
-# 基于MQTT的同步、异步指令下发架构
+# FD协议
+fd协议是一个对等协议，没有特权服务器，只有特定功能的对等终端，例如目录服务终端，服务发现终端等
+
+在传统的cs、bs架构中，客户端连接到服务器，然后什么都听从服务器的安排。
+
+在fd协议中，客户端信任一些终端ID，然后从它们那里使用服务，例如信任一个目录服务客户端，然后找它得到另一个客户端的信息，并和另一个客户端直接联系。
+
+这是一个公平对等的世界！没有主服务器！没有集权！
+
+当前版本基于MQTT实现，依赖固定的MQTT代理服务端。
+
+
+## 基于MQTT的同步、异步指令下发架构
 1. 使用QoS 1（至少一次）确保消息送达，每个终端使用持久会话连接（Clean Session = false）确保离线期间的消息在客户端重连后能够接收
 2. 调用方发布任务到`pending`主题，终端订阅`pending`主题接收到任务回复`ack`，调用方收到`ack`确认送达，调用方可通过`complete`、`failed`主题跟踪每个任务的状态和生命周期
 
@@ -7,6 +19,7 @@
 - nodes/{target_node_id}/tasks/ack        # 任务确认
 - nodes/{target_node_id}/tasks/complete   # 任务完成
 - nodes/{target_node_id}/tasks/failed     # 任务失败
+- nodes/{target_node_id}/status           # 节点状态
 
 - 每个节点同时：
 - 订阅自己ID的入站消息：nodes/{self_node_id}/tasks/pending
