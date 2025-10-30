@@ -133,6 +133,52 @@ nodes/B/tasks/+  (监听所有发给自己的消息)
 
 这实际上类似于每个人都有一个邮箱，你往别人的邮箱里放信，同时查看自己的邮箱收信 - 而不是直接进入别人家看他们是否有你的信。
 
+## 消息结构体
+
+### MessagePending (任务消息)
+```go
+type MessagePending struct {
+    SenderClientId   string `json:"sender_client_id"`   // 发送者客户端ID
+    ReceiverClientId string `json:"receiver_client_id"` // 接收者客户端ID
+    MessageId        string `json:"message_id"`         // 消息ID，UUID格式
+    Action           string `json:"action"`             // 消息动作类型，内容自定义，例如“开灯”
+    Timestamp        int64  `json:"timestamp"`          // 消息发送时间戳(秒)
+    Expiration       int64  `json:"expiration"`         // 消息过期时间戳(秒)
+    Payload          []byte `json:"payload"`            // 消息负载(业务数据)
+}
+```
+
+### MessageAck (确认消息)
+```go
+type MessageAck struct {
+    MessageId string `json:"message_id"` // 对应的任务消息ID
+}
+```
+
+### MessageComplete (完成消息)
+```go
+type MessageComplete struct {
+    MessageId string `json:"message_id"` // 对应的任务消息ID
+    Value     []byte `json:"value"`      // 返回值
+}
+```
+
+### MessageFailed (失败消息)
+```go
+type MessageFailed struct {
+    MessageId string `json:"message_id"` // 对应的任务消息ID
+    Error     []byte `json:"error"`      // 错误信息
+}
+```
+
+**字段说明:**
+- `SenderClientId`: 标识发送者,但可被伪造,需额外验证
+- `ReceiverClientId`: 标识接收者,用于路由
+- `MessageId`: 关联请求和响应,建议使用UUID
+- `Timestamp`: 消息创建时间,可用于检测时间偏差
+- `Expiration`: 过期时间,接收方应丢弃过期消息
+- `Payload`: 实际业务数据,可根据 `Action` 字段进行区分解码
+
 ## 安全建议
 本协议只规定了数据的流向，并不负责“信件”是否是第三者伪造发信人，所以payload中需要自行鉴别发信人身份。
 
@@ -141,7 +187,7 @@ nodes/B/tasks/+  (监听所有发给自己的消息)
 ```
 %% 通信模型
 %% 自己只可以订阅自己的 pending (接收任务)
-%% 任何人可以订阅任何节点的 ack/complete/failed (接收任务响应)
+%% 自己只可以订阅自己的 ack/complete/failed (接收任务响应)
 %% 任何人可以发布到任何节点的 pending (发任务)
 %% 任何人可以发布到任何节点的 ack/complete/failed (回复任务)
 %% 自己只可以发布自己的状态 status
