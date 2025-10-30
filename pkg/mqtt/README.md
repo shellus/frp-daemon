@@ -99,6 +99,31 @@ type MessageFailed struct {
 }
 ```
 
+### MessageStatus (状态消息)
+
+状态消息使用 MQTT 保留消息(Retained Message)发布到 `nodes/{username}/status` 主题。
+每个节点定期更新自己的状态,其他节点可以订阅该主题获取最新状态。
+
+```go
+type MessageStatus struct {
+    Time     int64  `json:"time"`               // 状态更新时间戳(秒)
+    Online   *bool  `json:"online,omitempty"`   // 在线状态(可选)
+    Battery  *int   `json:"battery,omitempty"`  // 电量百分比 0-100(可选)
+    Rssi     *int   `json:"rssi,omitempty"`     // 信号强度 dBm(可选)
+    Ip       string `json:"ip,omitempty"`       // IP地址(可选)
+    Version  string `json:"version,omitempty"`  // 软件版本(可选)
+    Uptime   int64  `json:"uptime,omitempty"`   // 运行时长(秒)(可选)
+    Data     []byte `json:"data,omitempty"`     // 其他业务自定义数据(可选)
+}
+```
+
+**状态消息特点:**
+- 使用保留消息(Retained=true),新订阅者立即收到最新状态
+- 节点定期发布更新自己的状态
+- 其他节点订阅 `nodes/{target_username}/status` 获取目标节点状态
+- 发送空载荷可删除保留消息
+- 所有字段(除Time外)都是可选的,由业务根据实际需求选择使用
+
 **字段说明:**
 - `Sender`: 发送者的 MQTT username，回复消息时需要发布到 `nodes/{sender}/ack` 等主题，但此字段可被伪造，需额外验证
 - `Receiver`: 接收者的 MQTT username，用于确定消息发布到哪个主题 `nodes/{receiver}/pending`，应用层无需关注
@@ -175,6 +200,54 @@ mosquitto_pub -h broker.emqx.io -p 1883 -t "nodes/A/complete" -q 1 -u B -P passw
 %% 拒绝其他所有操作
 {deny, all}.
 ```
+
+## 遗嘱消息 (Last Will and Testament)
+
+遗嘱消息用于在节点异常断线时自动通知其他节点。当节点连接到 MQTT Broker 时设置遗嘱消息,如果节点异常断开(网络故障、程序崩溃等),Broker 会自动发布遗嘱消息。
+
+### 遗嘱消息配置
+
+**主题:** `nodes/{username}/status`
+**QoS:** 1
+**Retained:** true (保留消息)
+**Payload:**
+```json
+{
+  "time": 1234567890,
+  "online": false
+}
+```
+
+### 工作机制
+
+1. **连接时设置遗嘱** - 节点连接 MQTT Broker 时配置遗嘱消息
+2. **正常断开不触发** - 节点正常断开连接(发送 DISCONNECT)时,遗嘱消息不会发布
+3. **异常断开触发** - 节点异常断开(网络故障、超时、崩溃)时,Broker 自动发布遗嘱消息
+4. **状态同步** - 遗嘱消息发布到 status 主题,其他节点订阅该主题可立即感知节点离线
+
+### 最佳实践
+
+1. **正常上线时发布在线状态**
+   ```json
+   {
+     "time": 1234567890,
+     "online": true,
+     "ip": "192.168.1.100",
+     "version": "1.0.0"
+   }
+   ```
+
+2. **定期更新状态** - 节点运行期间定期发布状态更新(如每分钟一次)
+
+3. **正常下线时发布离线状态** - 节点正常退出前主动发布离线状态,不依赖遗嘱消息
+   ```json
+   {
+     "time": 1234567890,
+     "online": false
+   }
+   ```
+
+4. **遗嘱消息作为兜底** - 遗嘱消息确保异常情况下其他节点也能感知离线
 
 ## 持久会话
 
