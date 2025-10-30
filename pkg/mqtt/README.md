@@ -195,10 +195,10 @@ type MessageFailed struct {
 %% 允许节点订阅自己的 pending 主题
 {allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/pending"]}.
 
-%% 允许节点订阅任何节点的响应主题
-{allow, all, subscribe, ["nodes/+/tasks/ack"]}.
-{allow, all, subscribe, ["nodes/+/tasks/complete"]}.
-{allow, all, subscribe, ["nodes/+/tasks/failed"]}.
+%% 允许节点订阅自己的响应主题
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/ack"]}.
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/complete"]}.
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/failed"]}.
 
 %% 允许节点发布到任何节点的 pending 主题
 {allow, all, publish, ["nodes/+/tasks/pending"]}.
