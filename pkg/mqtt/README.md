@@ -5,8 +5,6 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 
 在fd协议中，客户端信任一些终端ID，然后从它们那里使用服务，例如信任一个目录服务客户端，然后找它得到另一个客户端的信息，并和另一个客户端直接联系。
 
-这是一个公平对等的世界！没有主服务器！没有集权！
-
 当前版本基于MQTT实现，依赖固定的MQTT代理服务端。
 
 
@@ -14,7 +12,7 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 1. 使用QoS 1（至少一次）确保消息送达，每个终端使用持久会话连接（Clean Session = false）确保离线期间的消息在客户端重连后能够接收
 2. 调用方发布任务到`pending`主题，终端订阅`pending`主题接收到任务回复`ack`，调用方收到`ack`确认送达，调用方可通过`complete`、`failed`主题跟踪每个任务的状态和生命周期
 
-## 平等节点网络的主题设计
+## 主题（topic）设计
 - nodes/{target_node_id}/tasks/pending    # 向特定节点发送任务
 - nodes/{target_node_id}/tasks/ack        # 任务确认
 - nodes/{target_node_id}/tasks/complete   # 任务完成
@@ -24,6 +22,7 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 - 每个节点同时：
 - 订阅自己ID的入站消息：nodes/{self_node_id}/tasks/pending
 - 监听发送给自己的任务响应：nodes/+/tasks/{ack，complete，failed} (当需要时)
+- `nodes`为主题前缀，可根据业务应用更换
 
 ## 节点通信模型解析
 
@@ -40,7 +39,7 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 3. **如何接收别人发给你的消息**:
    - 你需要订阅 `nodes/{你自己的ID}/tasks/+`
    - 这相当于"监听自己的信箱"
-   - `+` 是通配符，表示监听所有类型的任务消息
+   - `+` 是通配符，表示监听所有类型的任务消息 (MQTT 的单层通配符 `+` 不能跨越路径分隔符 `/`，而多层通配符 `#` 才能匹配后续多级路径)
 
 ## 身份验证与主题访问控制：
 - 确保客户端只能订阅和发布到自己username相关的主题
@@ -63,6 +62,10 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 5. 这种机制适合移动设备或IoT设备经常离线的场景，确保设备不会错过重要消息
 
 ## 关于QoS
+### QoS 1不保证顺序
+1. QoS 1（至少一次）保证消息至少送达一次，但不保证顺序
+2. 代理和客户端可能会在处理消息时发生重排序
+
 ### 常见的QoS 1重复场景
 1. 客户端收到消息并处理，但发回的PUBACK确认包在网络中丢失
 2. 当网络连接不稳定，断开重连后，代理可能重传未确认的消息
@@ -129,3 +132,39 @@ nodes/B/tasks/+  (监听所有发给自己的消息)
 这种设计的优点是清晰的数据流向和简单的访问控制，因为每个节点只需权限访问自己的接收主题和其他节点的发送主题。
 
 这实际上类似于每个人都有一个邮箱，你往别人的邮箱里放信，同时查看自己的邮箱收信 - 而不是直接进入别人家看他们是否有你的信。
+
+## 安全建议
+本协议只规定了数据的流向，并不负责“信件”是否是第三者伪造发信人，所以payload中需要自行鉴别发信人身份。
+
+## EMQX ACL 规则建议
+
+```
+%% 通信模型
+%% 自己只可以订阅自己的 pending (接收任务)
+%% 任何人可以订阅任何节点的 ack/complete/failed (接收任务响应)
+%% 任何人可以发布到任何节点的 pending (发任务)
+%% 任何人可以发布到任何节点的 ack/complete/failed (回复任务)
+%% 自己只可以发布自己的状态 status
+
+%% 允许节点订阅自己的 pending 主题
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/pending"]}.
+
+%% 允许节点订阅任何节点的响应主题
+{allow, all, subscribe, ["nodes/+/tasks/ack"]}.
+{allow, all, subscribe, ["nodes/+/tasks/complete"]}.
+{allow, all, subscribe, ["nodes/+/tasks/failed"]}.
+
+%% 允许节点发布到任何节点的 pending 主题
+{allow, all, publish, ["nodes/+/tasks/pending"]}.
+
+%% 允许节点发布到任何节点的响应主题
+{allow, all, publish, ["nodes/+/tasks/ack"]}.
+{allow, all, publish, ["nodes/+/tasks/complete"]}.
+{allow, all, publish, ["nodes/+/tasks/failed"]}.
+
+%% 允许节点发布自己的状态
+{allow, {username, {re, "^(.+)$"}}, publish, ["nodes/$1/status"]}.
+
+%% 拒绝其他所有操作
+{deny, all}.
+```
