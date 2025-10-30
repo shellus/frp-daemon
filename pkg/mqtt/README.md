@@ -13,34 +13,38 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 2. 调用方发布任务到`pending`主题，终端订阅`pending`主题接收到任务回复`ack`，调用方收到`ack`确认送达，调用方可通过`complete`、`failed`主题跟踪每个任务的状态和生命周期
 
 ## 主题（topic）设计
-- nodes/{node}/pending    # 向特定节点发送任务
-- nodes/{node}/ack        # 任务确认
-- nodes/{node}/complete   # 任务完成
-- nodes/{node}/failed     # 任务失败
-- nodes/{node}/status     # 节点状态
+- nodes/{username}/pending    # 向特定节点发送任务
+- nodes/{username}/ack        # 任务确认
+- nodes/{username}/complete   # 任务完成
+- nodes/{username}/failed     # 任务失败
+- nodes/{username}/status     # 节点状态
+
+说明: `{username}` 是 MQTT 连接时使用的用户名,每个节点使用唯一的 username 连接到 MQTT Broker。
 
 - 每个节点同时：
-- 订阅自己ID的入站消息：nodes/{self}/pending
-- 订阅自己ID的任务响应：nodes/{self}/{ack，complete，failed} 
+- 订阅自己username的入站消息：nodes/{username}/pending
+- 订阅自己username的任务响应：nodes/{username}/{ack，complete，failed}
 (如果自己不准备接收响应，那就不需要订阅自己的响应主题)
+
+`nodes` 可根据需要换成应用名称或产品名称等
 
 ## 节点通信模型解析
 
 这个设计是基于对等节点（P2P）通信模型，其中：
 
-1. **主题结构**: `nodes/{node}/{action}`
-   - `{node}` 是接收消息的节点ID
+1. **主题结构**: `nodes/{username}/{action}`
+   - `{username}` 是接收消息的节点的 MQTT username
    - `{action}` 是操作类型（pending/ack/complete/failed/status）
 
 2. **如何发送消息给其他节点**:
-   - 当你要发送任务给节点B时，你发布到 `nodes/B/pending`
+   - 当你要发送任务给节点B时，你发布到 `nodes/B/pending` (B是对方的username)
    - 这意味着你是在"写入对方的信箱"
 
 3. **如何接收别人发给你的消息**:
-   - 你需要订阅 `nodes/{你自己的ID}/pending`（接收任务）
-   - 你需要订阅 `nodes/{你自己的ID}/ack`（接收确认）
-   - 你需要订阅 `nodes/{你自己的ID}/complete`（任务完成）
-   - 你需要订阅 `nodes/{你自己的ID}/failed`（任务失败）
+   - 你需要订阅 `nodes/{你自己的username}/pending`（接收任务）
+   - 你需要订阅 `nodes/{你自己的username}/ack`（接收确认）
+   - 你需要订阅 `nodes/{你自己的username}/complete`（任务完成）
+   - 你需要订阅 `nodes/{你自己的username}/failed`（任务失败）
    - 这相当于"监听自己的信箱"
 
 ## 身份验证与主题访问控制：
@@ -102,38 +106,39 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 2. 当新客户端订阅包含保留消息的主题时，它会立即收到该主题的最新保留消息
 3. 要删除一个保留消息，发送方可以发送一个空载荷（empty payload）的保留消息到该主题
 
-## 简单示例
 
-假设网络中有节点A和节点B：
+## mosquitto 示例
 
-**节点A的订阅**:
-```
-nodes/A/pending
-nodes/A/ack
-nodes/A/complete
-nodes/A/failed
+假设 MQTT Broker 地址为 `broker.emqx.io:1883`，节点A向节点B发送一个任务并获取回复：
+
+### 终端1 - 节点B订阅自己的 pending 主题（接收任务）
+```bash
+mosquitto_sub -h broker.emqx.io -p 1883 -t "nodes/B/pending" -q 1 -u B -P password_b
 ```
 
-**节点B的订阅**:
-```
-nodes/B/pending
-nodes/B/ack
-nodes/B/complete
-nodes/B/failed
+### 终端2 - 节点A订阅自己的 complete 主题（接收完成响应）
+```bash
+mosquitto_sub -h broker.emqx.io -p 1883 -t "nodes/A/complete" -q 1 -u A -P password_a
 ```
 
-**当A要发任务给B**:
-- A发布消息到 `nodes/B/pending`
-- B收到消息因为它订阅了这个主题
+### 终端3 - 节点A发送任务给节点B
+```bash
+mosquitto_pub -h broker.emqx.io -p 1883 -t "nodes/B/pending" -q 1 -u A -P password_a \
+  -m '{"sender":"A","receiver":"B","msg_id":"msg001","action":"test","time":1234567890,"exp":9999999999,"payload":{}}'
+```
 
-**当B要回复A**:
-- B发布确认到 `nodes/A/ack`
-- A收到确认因为它订阅了这个主题
+此时终端1（节点B）会收到任务消息。
+
+### 终端4 - 节点B回复完成消息给节点A
+```bash
+mosquitto_pub -h broker.emqx.io -p 1883 -t "nodes/A/complete" -q 1 -u B -P password_b \
+  -m '{"msg_id":"msg001","value":"task completed successfully"}'
+```
 
 ### 不是监听"别人的主题"
 
 这不是监听"别人的主题"，而是：
-1. 每个节点都有自己的"命名空间"（`nodes/{self}/+`）
+1. 每个节点都有自己的"命名空间"（`nodes/{username}/+`）
 2. 你订阅自己的命名空间来接收消息
 3. 你发布到对方的命名空间来发送消息
 
@@ -146,45 +151,45 @@ nodes/B/failed
 ### MessagePending (任务消息)
 ```go
 type MessagePending struct {
-    SenderClientId   string `json:"sender_client_id"`   // 发送者客户端ID
-    ReceiverClientId string `json:"receiver_client_id"` // 接收者客户端ID
-    MessageId        string `json:"message_id"`         // 消息ID，UUID格式
-    Action           string `json:"action"`             // 消息动作类型，内容自定义，例如“开灯”
-    Timestamp        int64  `json:"timestamp"`          // 消息发送时间戳(秒)
-    Expiration       int64  `json:"expiration"`         // 消息过期时间戳(秒)
-    Payload          []byte `json:"payload"`            // 消息负载(业务数据)
+    Sender   string `json:"sender"`   // 发送者
+    Receiver string `json:"receiver"` // 接收者
+    MsgId    string `json:"msg_id"`   // 消息ID，UUID格式
+    Action   string `json:"action"`   // 消息动作类型，内容自定义，例如“开灯”
+    Time     int64  `json:"time"`     // 消息发送时间戳(秒)
+    Exp      int64  `json:"exp"`      // 消息过期时间戳(秒)
+    Payload  []byte `json:"payload"`  // 消息负载(业务数据)
 }
 ```
 
 ### MessageAck (确认消息)
 ```go
 type MessageAck struct {
-    MessageId string `json:"message_id"` // 对应的任务消息ID
+    MsgId string `json:"msg_id"` // 对应的任务消息ID
 }
 ```
 
 ### MessageComplete (完成消息)
 ```go
 type MessageComplete struct {
-    MessageId string `json:"message_id"` // 对应的任务消息ID
-    Value     []byte `json:"value"`      // 返回值
+    MsgId string `json:"msg_id"` // 对应的任务消息ID
+    Value []byte `json:"value"`  // 返回值
 }
 ```
 
 ### MessageFailed (失败消息)
 ```go
 type MessageFailed struct {
-    MessageId string `json:"message_id"` // 对应的任务消息ID
-    Error     []byte `json:"error"`      // 错误信息
+    MsgId string `json:"msg_id"` // 对应的任务消息ID
+    Error []byte `json:"error"`  // 错误信息
 }
 ```
 
 **字段说明:**
-- `SenderClientId`: 标识发送者,但可被伪造,需额外验证
-- `ReceiverClientId`: 标识接收者,用于路由
-- `MessageId`: 关联请求和响应,建议使用UUID
-- `Timestamp`: 消息创建时间,可用于检测时间偏差
-- `Expiration`: 过期时间,接收方应丢弃过期消息
+- `Sender`: 发送者的 MQTT username，回复消息时需要发布到 `nodes/{sender}/ack` 等主题，但此字段可被伪造，需额外验证
+- `Receiver`: 接收者的 MQTT username，用于确定消息发布到哪个主题 `nodes/{receiver}/pending`，应用层无需关注
+- `MsgId`: 关联请求和响应,建议使用UUID
+- `Time`: 消息创建时间,可用于检测时间偏差
+- `Exp`: 过期时间,接收方应丢弃过期消息,不执行该任务,也不需要ask或failed
 - `Payload`: 实际业务数据,可根据 `Action` 字段进行区分解码
 
 ## 安全建议
