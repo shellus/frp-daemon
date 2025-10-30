@@ -13,33 +13,35 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 2. 调用方发布任务到`pending`主题，终端订阅`pending`主题接收到任务回复`ack`，调用方收到`ack`确认送达，调用方可通过`complete`、`failed`主题跟踪每个任务的状态和生命周期
 
 ## 主题（topic）设计
-- nodes/{target_node_id}/tasks/pending    # 向特定节点发送任务
-- nodes/{target_node_id}/tasks/ack        # 任务确认
-- nodes/{target_node_id}/tasks/complete   # 任务完成
-- nodes/{target_node_id}/tasks/failed     # 任务失败
-- nodes/{target_node_id}/status           # 节点状态
+- nodes/{node}/pending    # 向特定节点发送任务
+- nodes/{node}/ack        # 任务确认
+- nodes/{node}/complete   # 任务完成
+- nodes/{node}/failed     # 任务失败
+- nodes/{node}/status     # 节点状态
 
 - 每个节点同时：
-- 订阅自己ID的入站消息：nodes/{self_node_id}/tasks/pending
-- 监听发送给自己的任务响应：nodes/+/tasks/{ack，complete，failed} (当需要时)
-- `nodes`为主题前缀，可根据业务应用更换
+- 订阅自己ID的入站消息：nodes/{self}/pending
+- 订阅自己ID的任务响应：nodes/{self}/{ack，complete，failed} 
+(如果自己不准备接收响应，那就不需要订阅自己的响应主题)
 
 ## 节点通信模型解析
 
 这个设计是基于对等节点（P2P）通信模型，其中：
 
-1. **主题结构**: `nodes/{target_node_id}/tasks/{action}`
-   - `{target_node_id}` 是接收消息的节点ID
-   - `{action}` 是操作类型（pending/ack/complete/failed）
+1. **主题结构**: `nodes/{node}/{action}`
+   - `{node}` 是接收消息的节点ID
+   - `{action}` 是操作类型（pending/ack/complete/failed/status）
 
 2. **如何发送消息给其他节点**:
-   - 当你要发送任务给节点B时，你发布到 `nodes/B/tasks/pending`
+   - 当你要发送任务给节点B时，你发布到 `nodes/B/pending`
    - 这意味着你是在"写入对方的信箱"
 
 3. **如何接收别人发给你的消息**:
-   - 你需要订阅 `nodes/{你自己的ID}/tasks/+`
+   - 你需要订阅 `nodes/{你自己的ID}/pending`（接收任务）
+   - 你需要订阅 `nodes/{你自己的ID}/ack`（接收确认）
+   - 你需要订阅 `nodes/{你自己的ID}/complete`（任务完成）
+   - 你需要订阅 `nodes/{你自己的ID}/failed`（任务失败）
    - 这相当于"监听自己的信箱"
-   - `+` 是通配符，表示监听所有类型的任务消息 (MQTT 的单层通配符 `+` 不能跨越路径分隔符 `/`，而多层通配符 `#` 才能匹配后续多级路径)
 
 ## 身份验证与主题访问控制：
 - 确保客户端只能订阅和发布到自己username相关的主题
@@ -106,26 +108,32 @@ fd协议是一个对等协议，没有特权服务器，只有特定功能的对
 
 **节点A的订阅**:
 ```
-nodes/A/tasks/+  (监听所有发给自己的消息)
+nodes/A/pending
+nodes/A/ack
+nodes/A/complete
+nodes/A/failed
 ```
 
 **节点B的订阅**:
 ```
-nodes/B/tasks/+  (监听所有发给自己的消息)
+nodes/B/pending
+nodes/B/ack
+nodes/B/complete
+nodes/B/failed
 ```
 
 **当A要发任务给B**:
-- A发布消息到 `nodes/B/tasks/pending`
+- A发布消息到 `nodes/B/pending`
 - B收到消息因为它订阅了这个主题
 
 **当B要回复A**:
-- B发布确认到 `nodes/A/tasks/ack`
+- B发布确认到 `nodes/A/ack`
 - A收到确认因为它订阅了这个主题
 
 ### 不是监听"别人的主题"
 
 这不是监听"别人的主题"，而是：
-1. 每个节点都有自己的"命名空间"（`nodes/{self_id}/tasks/+`）
+1. 每个节点都有自己的"命名空间"（`nodes/{self}/+`）
 2. 你订阅自己的命名空间来接收消息
 3. 你发布到对方的命名空间来发送消息
 
@@ -191,25 +199,29 @@ type MessageFailed struct {
 %% 任何人可以发布到任何节点的 pending (发任务)
 %% 任何人可以发布到任何节点的 ack/complete/failed (回复任务)
 %% 自己只可以发布自己的状态 status
+%% 任何人可以订阅任何人的状态 status
 
 %% 允许节点订阅自己的 pending 主题
-{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/pending"]}.
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/pending"]}.
 
 %% 允许节点订阅自己的响应主题
-{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/ack"]}.
-{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/complete"]}.
-{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/tasks/failed"]}.
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/ack"]}.
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/complete"]}.
+{allow, {username, {re, "^(.+)$"}}, subscribe, ["nodes/$1/failed"]}.
 
 %% 允许节点发布到任何节点的 pending 主题
-{allow, all, publish, ["nodes/+/tasks/pending"]}.
+{allow, all, publish, ["nodes/+/pending"]}.
 
 %% 允许节点发布到任何节点的响应主题
-{allow, all, publish, ["nodes/+/tasks/ack"]}.
-{allow, all, publish, ["nodes/+/tasks/complete"]}.
-{allow, all, publish, ["nodes/+/tasks/failed"]}.
+{allow, all, publish, ["nodes/+/ack"]}.
+{allow, all, publish, ["nodes/+/complete"]}.
+{allow, all, publish, ["nodes/+/failed"]}.
 
 %% 允许节点发布自己的状态
 {allow, {username, {re, "^(.+)$"}}, publish, ["nodes/$1/status"]}.
+
+%% 允许任何人订阅任何人的状态
+{allow, all, subscribe, ["nodes/+/status"]}.
 
 %% 拒绝其他所有操作
 {deny, all}.

@@ -15,22 +15,12 @@ import (
 // 如果不清除，那么代理仍然会将该客户端被订阅到的消息缓存，当客户端重新连接时，代理会继续发送这些消息给这个订阅的客户端。
 // 所以持久性消息适合用于任务下发，消息传递等场景，可以保证消息不丢失。
 
-// 发送消息到目标节点的收件箱：
-// tasks/{target_username}/pending
-// 订阅消息结果：
-// tasks/{self_username}/ack
-// tasks/{self_username}/complete
-// tasks/{self_username}/failed
-
-// 订阅发给自己的指令
-// tasks/{self_username}/pending - 接收分配给自己的新任务
-// 发送消息结果到发送方：
-// tasks/{from_username}/ack - 确认已收到任务
-// tasks/{from_username}/complete - 报告任务成功完成
-// tasks/{from_username}/failed - 报告任务执行失败
-
-// 使用保留消息发布，上报自己的信息、状态
-// tasks/{self_username}/status - 上报自己的状态
+// 主题结构：
+// {prefix}/{node}/pending   - 向特定节点发送任务
+// {prefix}/{node}/ack       - 任务确认
+// {prefix}/{node}/complete  - 任务完成
+// {prefix}/{node}/failed    - 任务失败
+// {prefix}/{node}/status    - 节点状态（保留消息）
 
 type MessagePending struct {
 	SenderClientId   string `json:"sender_client_id"`   // 发送者客户端ID
